@@ -86,7 +86,7 @@ code { color: #be185d; }
    Dashboard
    ============================================================ */
 .welcome-hero {
-    background: linear-gradient(135deg, var(--brand-700) 0%, var(--brand-900) 100%);
+    background: var(--brand-700);
     color: #fff;
     border-radius: var(--radius);
     padding: 1.6rem 1.85rem;

@@ -166,14 +166,14 @@ the server enforces it via `.AsBffApiEndpoint()` and the `/bff` management endpo
 A small, consistent design system lives in `Client/wwwroot/css/app.css` (CSS
 custom-property tokens) plus the scoped `*.razor.css` files:
 
-- **Theme** — navy → slate gradient brand (`#1e3a8a` → `#0f172a`), light slate
+- **Theme** — solid navy brand (`#1e3a8a` / dark `#0f172a`), light slate
   background, rounded cards, soft shadows. Professional fintech look.
 - **Login** — full-screen, chromeless page (`EmptyLayout`) with a centered card,
   brand mark, the dev credentials, and an `+ MFA (TOTP)` hint.
 - **Shell** — sticky white top bar with the app title and a **user chip**
-  (initials avatar + name + role) and Logout; a dark gradient **sidebar** with
+  (initials avatar + name + role) and Logout; a dark navy **sidebar** with
   grouped sections (Report, Master Data) and an active-item accent bar.
-- **Dashboard** — a gradient welcome hero (name + role pill), three **stat cards**
+- **Dashboard** — a solid navy welcome hero (name + role pill), three **stat cards**
   with colored icon badges, and a dark `/api/me` verification panel.
 - **Placeholders / Access denied** — shared `.empty-state` and `.page-head`
   styles for a consistent "coming soon" / message look.

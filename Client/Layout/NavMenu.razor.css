@@ -21,7 +21,7 @@
     width: 30px;
     height: 30px;
     border-radius: 9px;
-    background: linear-gradient(135deg, #3b82f6, #1e3a8a);
+    background: #2563eb;
     display: inline-grid;
     place-items: center;
     margin-right: .6rem;
