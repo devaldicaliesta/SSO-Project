@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Shared;
@@ -7,12 +6,14 @@ namespace Server.Controllers;
 
 /// <summary>
 /// API endpoint that returns the profile of the currently signed-in user.
-/// Protected with [Authorize] using the JWT "Bearer" scheme - it can only be
-/// reached with a valid access token issued by the OIDC flow.
+/// In the BFF model this is a LOCAL api endpoint: the browser calls it with the
+/// HttpOnly session cookie (no bearer token in the browser). It is protected by
+/// [Authorize] (default "cookie" scheme) and the BFF antiforgery requirement
+/// (applied via .AsBffApiEndpoint() in Program.cs).
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+[Authorize]
 public class MeController : ControllerBase
 {
     /// <summary>

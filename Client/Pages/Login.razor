@@ -1,6 +1,5 @@
 @page "/login"
 @using Microsoft.AspNetCore.Components.Authorization
-@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
 @inject NavigationManager Navigation
 
 <div class="container mt-5">
@@ -57,10 +56,12 @@
         }
     }
 
-    // Triggers the OIDC redirect to the Authority (PKCE + state handled by the
-    // library). After the callback the user is returned here and forwarded to "/".
+    // Full-page navigation to the BFF login endpoint. The SERVER performs the
+    // OIDC challenge (Authorization Code + PKCE) and, on success, sets the
+    // HttpOnly session cookie and returns the user to "/". forceLoad is required
+    // because /bff/login is a server endpoint, not a Blazor route.
     private void LoginWithSSO()
     {
-        Navigation.NavigateToLogin("authentication/login");
+        Navigation.NavigateTo("bff/login?returnUrl=/", forceLoad: true);
     }
 }

@@ -1,3 +1,4 @@
+using Duende.IdentityServer;
 using Duende.IdentityServer.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
@@ -25,11 +26,9 @@ public class LogoutModel : PageModel
         // Validates the request and yields the validated post-logout redirect URI.
         var context = await _interaction.GetLogoutContextAsync(logoutId);
 
-        if (User.Identity?.IsAuthenticated == true)
-        {
-            // Sign out of the default ("idsrv") cookie scheme.
-            await HttpContext.SignOutAsync();
-        }
+        // Sign out of the IdP's own "idsrv" scheme explicitly (the application
+        // default scheme is the BFF "cookie", not idsrv).
+        await HttpContext.SignOutAsync(IdentityServerConstants.DefaultCookieAuthenticationScheme);
 
         if (!string.IsNullOrWhiteSpace(context?.PostLogoutRedirectUri))
         {

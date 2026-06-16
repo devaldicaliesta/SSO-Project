@@ -50,21 +50,25 @@ public static class Config
         {
             new IsClient
             {
-                ClientId = "fundadmin-wasm",
-                ClientName = "FundAdmin Asset Management (Blazor WASM)",
+                ClientId = "fundadmin-bff",
+                ClientName = "FundAdmin Asset Management (BFF)",
 
-                // Public client: PKCE, no client secret (the secret can never be
-                // stored safely in a browser-hosted SPA).
+                // CONFIDENTIAL client: the OIDC code exchange happens server-side
+                // (the BFF host), so the secret CAN be stored safely here. Tokens
+                // never reach the browser - the browser only gets an HttpOnly cookie.
+                // TODO: in production load the secret from configuration / a secret
+                //       store, do NOT hard-code it.
                 AllowedGrantTypes = GrantTypes.Code,
-                RequireClientSecret = false,
+                RequireClientSecret = true,
+                ClientSecrets = { new Secret("fundadmin-bff-dev-secret".Sha256()) },
                 RequirePkce = true,
 
                 // No consent screen for this first-party application.
                 RequireConsent = false,
 
-                RedirectUris = { "https://localhost:5001/authentication/login-callback" },
-                PostLogoutRedirectUris = { "https://localhost:5001/authentication/logout-callback" },
-                AllowedCorsOrigins = { "https://localhost:5001" },
+                // The BFF (ASP.NET Core OpenIdConnect handler) callback endpoints.
+                RedirectUris = { "https://localhost:5001/signin-oidc" },
+                PostLogoutRedirectUris = { "https://localhost:5001/signout-callback-oidc" },
 
                 AllowedScopes =
                 {
@@ -74,8 +78,10 @@ public static class Config
                     "fundadmin.api"
                 },
 
-                // The WASM auth library does not call the userinfo endpoint by
-                // default, so include the user claims directly in the ID token.
+                // Refresh tokens (held server-side by the BFF) so the session can be
+                // silently renewed without bouncing the user through the IdP again.
+                AllowOfflineAccess = true,
+
                 AlwaysIncludeUserClaimsInIdToken = true,
                 AccessTokenLifetime = 3600
             }

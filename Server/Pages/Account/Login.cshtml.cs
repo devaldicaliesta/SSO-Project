@@ -50,7 +50,12 @@ public class LoginModel : PageModel
                 DisplayName = user.Username,
                 AdditionalClaims = user.Claims.ToArray()
             };
-            await HttpContext.SignInAsync(identityServerUser);
+            // Sign into the IdP's own "idsrv" scheme explicitly. The application
+            // default sign-in scheme is now the BFF "cookie", so we must NOT rely
+            // on the default here, otherwise the IdP would not see a session.
+            await HttpContext.SignInAsync(
+                IdentityServerConstants.DefaultCookieAuthenticationScheme,
+                identityServerUser.CreatePrincipal());
 
             // ReturnUrl points back into the authorize endpoint (a local URL).
             if (!string.IsNullOrEmpty(ReturnUrl) && Url.IsLocalUrl(ReturnUrl))

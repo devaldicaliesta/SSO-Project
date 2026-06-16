@@ -8,6 +8,8 @@
 
   <ItemGroup>
     <!-- Hosts the Blazor WASM client (UseBlazorFrameworkFiles + serves _framework). -->
+    <PackageReference Include="Duende.BFF" Version="3.1.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="8.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="8.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
     <PackageReference Include="Duende.IdentityServer" Version="7.0.8" />

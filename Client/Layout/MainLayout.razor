@@ -1,7 +1,6 @@
 @inherits LayoutComponentBase
+@using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
-@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
-@inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 
 <div class="page">
@@ -25,7 +24,7 @@
                             @context.User.FindFirst("name")?.Value 
                             (@context.User.FindFirst("role")?.Value)
                         </span>
-                        <button class="btn btn-outline-danger btn-sm" @onclick="Logout">
+                        <button class="btn btn-outline-danger btn-sm" @onclick="() => Logout(context.User)">
                             <span class="bi bi-box-arrow-right me-1"></span>Logout
                         </button>
                     </Authorized>
@@ -40,11 +39,13 @@
 </div>
 
 @code {
-    // Clears the local session and calls the IdP end-session endpoint. After the
-    // logout round-trip the user is returned to "/", which (now unauthenticated)
-    // sends them back to the login page.
-    private void Logout()
+    // The BFF issues a per-session logout URL (a "bff:logout_url" claim) that
+    // carries the session id, so logout cannot be triggered cross-site. We do a
+    // full-page navigation to it: the server clears the cookie + calls the IdP
+    // end-session endpoint, then returns the user to the app (now logged out).
+    private void Logout(ClaimsPrincipal user)
     {
-        Navigation.NavigateToLogout("authentication/logout", "/");
+        var logoutUrl = user.FindFirst("bff:logout_url")?.Value ?? "bff/logout";
+        Navigation.NavigateTo(logoutUrl, forceLoad: true);
     }
 }
