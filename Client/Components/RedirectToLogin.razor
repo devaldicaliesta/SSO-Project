@@ -1,0 +1,10 @@
+@inject NavigationManager Navigation
+
+@code {
+    // Used by App.razor when an unauthenticated user hits a protected route.
+    // Sends them to the Login page that shows the "Login with SSO" button.
+    protected override void OnInitialized()
+    {
+        Navigation.NavigateTo("login", replace: true);
+    }
+}

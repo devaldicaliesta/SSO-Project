@@ -1,0 +1,18 @@
+## .NET build outputs
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+
+## Rider / VS
+.idea/
+.vs/
+
+## Duende IdentityServer auto-generated dev signing keys
+Server/keys/
+
+## Local run logs / scratch
+_run.log
+_run.err
+_e2e.ps1

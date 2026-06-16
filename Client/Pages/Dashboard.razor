@@ -1,0 +1,161 @@
+@page "/"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthStateProvider
+@inject HttpClient Http
+
+<PageTitle>Dashboard - FundAdmin Asset Management</PageTitle>
+
+<div class="container-fluid">
+    @if (userProfile != null)
+    {
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <h4 class="alert-heading">
+                        Selamat datang, @userProfile.Name (@userProfile.Role)
+                    </h4>
+                    <p class="mb-0">Email: @userProfile.Email</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-4 mb-3">
+                <div class="card border-primary shadow-sm h-100">
+                    <div class="card-body">
+                        <h5 class="card-title text-primary">
+                            <span class="bi bi-pie-chart me-2"></span>Total Fund Aktif
+                        </h5>
+                        <h2 class="card-text">12</h2>
+                        <small class="text-muted">Reksa Dana aktif periode ini</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card border-success shadow-sm h-100">
+                    <div class="card-body">
+                        <h5 class="card-title text-success">
+                            <span class="bi bi-clock-history me-2"></span>Posisi Terakhir Diperbarui
+                        </h5>
+                        <h2 class="card-text">@DateTime.Now.ToString("dd MMM yyyy HH:mm")</h2>
+                        <small class="text-muted">Waktu server</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card border-warning shadow-sm h-100">
+                    <div class="card-body">
+                        <h5 class="card-title text-warning">
+                            <span class="bi bi-activity me-2"></span>Aktivitas Terbaru
+                        </h5>
+                        <h2 class="card-text">5</h2>
+                        <small class="text-muted">Transaksi hari ini</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <div class="card shadow-sm">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <span class="bi bi-shield-check me-2"></span>
+                            Verifikasi Access Token (GET /api/me)
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">
+                            Berikut adalah hasil panggilan API <code>/api/me</code>
+                            menggunakan access token yang diperoleh dari OIDC flow:
+                        </p>
+                        <pre class="bg-light p-3 rounded"><code>@apiResult</code></pre>
+                        @if (isLoadingApi)
+                        {
+                            <div class="text-center">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                    <span class="visually-hidden">Memuat...</span>
+                                </div>
+                                <span class="ms-2">Memanggil API...</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else if (isLoading)
+    {
+        <div class="text-center mt-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Memuat...</span>
+            </div>
+            <p class="mt-2">Memuat data pengguna...</p>
+        </div>
+    }
+</div>
+
+@code {
+    private Shared.UserProfileDto? userProfile;
+    private string apiResult = "";
+    private bool isLoading = true;
+    private bool isLoadingApi = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                userProfile = new Shared.UserProfileDto
+                {
+                    Name = user.FindFirst("name")?.Value ?? "User",
+                    Email = user.FindFirst("email")?.Value ?? "",
+                    Role = user.FindFirst("role")?.Value ?? "Unknown"
+                };
+
+                await CallApiMe();
+            }
+        }
+        catch (Exception ex)
+        {
+            apiResult = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task CallApiMe()
+    {
+        isLoadingApi = true;
+        try
+        {
+            var response = await Http.GetAsync("api/me");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var profile = await response.Content.ReadFromJsonAsync<Shared.UserProfileDto>();
+                apiResult = System.Text.Json.JsonSerializer.Serialize(profile,
+                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            }
+            else
+            {
+                apiResult = $"HTTP {(int)response.StatusCode}: {response.ReasonPhrase}";
+            }
+        }
+        catch (Exception ex)
+        {
+            apiResult = $"Exception: {ex.Message}";
+        }
+        finally
+        {
+            isLoadingApi = false;
+        }
+    }
+}

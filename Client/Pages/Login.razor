@@ -1,0 +1,66 @@
+@page "/login"
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@inject NavigationManager Navigation
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow">
+                <div class="card-body text-center p-5">
+                    <h3 class="card-title mb-4">
+                        <span class="bi bi-shield-lock me-2"></span>
+                        FundAdmin Asset Management
+                    </h3>
+
+                    <p class="text-muted mb-4">
+                        Aplikasi Manajemen Aset Reksa Dana
+                    </p>
+
+                    <hr />
+
+                    <p class="text-muted small mb-4">
+                        Silakan login menggunakan akun SSO Anda untuk mengakses sistem.
+                    </p>
+
+                    <button class="btn btn-primary btn-lg w-100" @onclick="LoginWithSSO">
+                        <span class="bi bi-box-arrow-in-right me-2"></span>
+                        Login dengan SSO
+                    </button>
+
+                    <div class="mt-3">
+                        <small class="text-muted">
+                            Kredensial test: analyst@fundadmin.local / Passw0rd!
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    // If the user is already signed in (e.g. they navigated back here after a
+    // successful login callback), go straight to the dashboard.
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+            if (state.User.Identity?.IsAuthenticated == true)
+            {
+                Navigation.NavigateTo("/", replace: true);
+            }
+        }
+    }
+
+    // Triggers the OIDC redirect to the Authority (PKCE + state handled by the
+    // library). After the callback the user is returned here and forwarded to "/".
+    private void LoginWithSSO()
+    {
+        Navigation.NavigateToLogin("authentication/login");
+    }
+}

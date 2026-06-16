@@ -1,0 +1,47 @@
+@page "/authentication/{action}"
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+
+<RemoteAuthenticatorView Action="@Action">
+    <LoggingIn>
+        <div class="text-center mt-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Memproses login...</span>
+            </div>
+            <p class="mt-2">Sedang mengarahkan ke halaman login SSO...</p>
+        </div>
+    </LoggingIn>
+    <CompletingLoggingIn>
+        <div class="text-center mt-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Menyelesaikan login...</span>
+            </div>
+            <p class="mt-2">Autentikasi berhasil, mengalihkan...</p>
+        </div>
+    </CompletingLoggingIn>
+    <LogOut>
+        <div class="text-center mt-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Memproses logout...</span>
+            </div>
+            <p class="mt-2">Sedang logout...</p>
+        </div>
+    </LogOut>
+    <LogOutFailed>
+        <div class="alert alert-danger mt-5" role="alert">
+            <h4>Logout gagal</h4>
+            <p>Terjadi kesalahan saat logout. Silakan coba lagi.</p>
+        </div>
+    </LogOutFailed>
+    <LogOutSucceeded>
+        <div class="alert alert-success mt-5" role="alert">
+            <h4>Logout berhasil</h4>
+            <p>Anda telah berhasil logout.</p>
+            <a href="/" class="btn btn-primary">Kembali ke Beranda</a>
+        </div>
+    </LogOutSucceeded>
+</RemoteAuthenticatorView>
+
+@code {
+    [Parameter]
+    public string? Action { get; set; }
+}
