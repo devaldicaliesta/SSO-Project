@@ -35,6 +35,13 @@ static HttpClientHandler DevBackchannelHandler() => new()
 builder.Services.AddIdentityServer(options =>
     {
         options.IssuerUri = authority;
+
+        // The application default scheme is the BFF "cookie". Without this line
+        // IdentityServer would read its login session from that default scheme
+        // and never see the idsrv session created by the Account/Login page,
+        // causing an infinite "User is not authenticated" login loop. Pin it.
+        options.Authentication.CookieAuthenticationScheme =
+            IdentityServerConstants.DefaultCookieAuthenticationScheme; // "idsrv"
     })
     .AddInMemoryIdentityResources(Config.IdentityResources)
     .AddInMemoryApiScopes(Config.ApiScopes)
