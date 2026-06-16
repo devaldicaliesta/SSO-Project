@@ -1,7 +1,5 @@
-using Duende.IdentityServer;
 using Duende.IdentityServer.Services;
 using Duende.IdentityServer.Test;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -37,33 +35,20 @@ public class LoginModel : PageModel
         ReturnUrl = returnUrl;
     }
 
-    public async Task<IActionResult> OnPostAsync()
+    public IActionResult OnPost()
     {
         if (_users.ValidateCredentials(Username, Password))
         {
             var user = _users.FindByUsername(Username);
 
-            // Issue the authentication cookie (default "idsrv" sign-in scheme).
-            // The user's claims flow into the tokens via the profile service.
-            var identityServerUser = new IdentityServerUser(user.SubjectId)
-            {
-                DisplayName = user.Username,
-                AdditionalClaims = user.Claims.ToArray()
-            };
-            // Sign into the IdP's own "idsrv" scheme explicitly. The application
-            // default sign-in scheme is now the BFF "cookie", so we must NOT rely
-            // on the default here, otherwise the IdP would not see a session.
-            await HttpContext.SignInAsync(
-                IdentityServerConstants.DefaultCookieAuthenticationScheme,
-                identityServerUser.CreatePrincipal());
+            // FIRST factor verified. Do NOT sign in yet - defer the session until
+            // the TOTP second factor is confirmed on /Account/Mfa. The pending
+            // state is carried in TempData (an encrypted, tamper-proof cookie).
+            TempData["mfa:sub"] = user.SubjectId;
+            TempData["mfa:returnUrl"] =
+                (!string.IsNullOrEmpty(ReturnUrl) && Url.IsLocalUrl(ReturnUrl)) ? ReturnUrl : "~/";
 
-            // ReturnUrl points back into the authorize endpoint (a local URL).
-            if (!string.IsNullOrEmpty(ReturnUrl) && Url.IsLocalUrl(ReturnUrl))
-            {
-                return Redirect(ReturnUrl);
-            }
-
-            return Redirect("~/");
+            return RedirectToPage("Mfa");
         }
 
         Error = "Invalid username or password.";

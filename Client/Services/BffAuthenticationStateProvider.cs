@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
 
 namespace Client.Services;
@@ -57,7 +58,7 @@ public class BffAuthenticationStateProvider : AuthenticationStateProvider
                         authenticationType: "bff",
                         nameType: "name",
                         roleType: "role");
-                    identity.AddClaims(claims.Select(c => new Claim(c.Type, c.Value)));
+                    identity.AddClaims(claims.Select(c => new Claim(c.Type, AsString(c.Value))));
                     return new ClaimsPrincipal(identity);
                 }
             }
@@ -73,6 +74,13 @@ public class BffAuthenticationStateProvider : AuthenticationStateProvider
     private static AuthenticationState Anonymous() =>
         new(new ClaimsPrincipal(new ClaimsIdentity()));
 
-    // Shape of each element returned by /bff/user: { "type": "...", "value": "..." }.
-    private sealed record ClaimRecord(string Type, string Value);
+    // /bff/user claim values are not always strings (e.g. "bff:session_expires_in"
+    // is a JSON number), so read each value as a raw JsonElement and stringify it.
+    private static string AsString(JsonElement value) =>
+        value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : value.GetRawText();
+
+    // Shape of each element returned by /bff/user: { "type": "...", "value": ... }.
+    private sealed record ClaimRecord(string Type, JsonElement Value);
 }

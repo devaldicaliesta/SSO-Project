@@ -1,7 +1,8 @@
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="">
-            <span class="bi bi-graph-up me-2"></span>FundAdmin
+            <span class="brand-mark"><span class="bi bi-graph-up-arrow text-white"></span></span>
+            FundAdmin
         </a>
         <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
             <span class="navbar-toggler-icon"></span>
@@ -11,32 +12,28 @@
 
 <div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
     <nav class="flex-column">
-        <div class="nav-item px-3">
+        <div class="nav-item">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-speedometer2 me-2"></span> Dashboard
+                <span class="bi bi-speedometer2"></span> Dashboard
             </NavLink>
         </div>
 
-        <div class="nav-item px-3 mt-2">
-            <small class="text-muted text-uppercase small fw-bold px-2">Report</small>
-        </div>
-        <div class="nav-item px-3">
+        <div class="nav-section">Report</div>
+        <div class="nav-item">
             <NavLink class="nav-link" href="report/stock-position">
-                <span class="bi bi-file-text me-2"></span> Stock Position
+                <span class="bi bi-file-earmark-bar-graph"></span> Stock Position
             </NavLink>
         </div>
 
-        <div class="nav-item px-3 mt-2">
-            <small class="text-muted text-uppercase small fw-bold px-2">Master Data</small>
-        </div>
-        <div class="nav-item px-3">
+        <div class="nav-section">Master Data</div>
+        <div class="nav-item">
             <NavLink class="nav-link" href="master-data/shares">
-                <span class="bi bi-building me-2"></span> Shares
+                <span class="bi bi-building"></span> Shares
             </NavLink>
         </div>
-        <div class="nav-item px-3">
+        <div class="nav-item">
             <NavLink class="nav-link" href="master-data/chart-of-account">
-                <span class="bi bi-journal me-2"></span> Chart of Account
+                <span class="bi bi-journal-text"></span> Chart of Account
             </NavLink>
         </div>
     </nav>

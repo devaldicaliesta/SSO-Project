@@ -1,6 +1,7 @@
 using Duende.IdentityServer;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Server;
+using Server.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -111,9 +112,10 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddBff()
     .AddServerSideSessions(); // in-memory session store (refresh-token revocation, etc.)
 
+builder.Services.AddSingleton<TotpService>(); // TOTP second factor for the dev IdP
 builder.Services.AddAuthorization();
 builder.Services.AddControllers();
-builder.Services.AddRazorPages(); // hosts the interactive Account/Login + Account/Logout pages
+builder.Services.AddRazorPages(); // hosts the interactive Account/Login + Account/Mfa + Account/Logout pages
 
 var app = builder.Build();
 

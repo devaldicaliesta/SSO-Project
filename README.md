@@ -1,7 +1,14 @@
-# FundAdmin Asset Management — Blazor WebAssembly (.NET 8) SSO
+# FundAdmin Asset Management — Blazor WebAssembly (.NET 8) + BFF SSO
 
 An asset-management system for mutual funds, built as a **hosted Blazor WebAssembly**
-application with a complete **OIDC (OpenID Connect) Single Sign-On** flow.
+application that authenticates through **OIDC Single Sign-On** using the
+**Backend-for-Frontend (BFF)** security pattern.
+
+> **Why BFF?** In a plain SPA the access/ID tokens live in the browser (readable by
+> JavaScript, exposed in the Network tab, vulnerable to XSS token theft). With BFF
+> the **server** performs the OIDC code exchange and **keeps the tokens server-side**.
+> The browser only ever holds an **HttpOnly, Secure session cookie** — no token is
+> ever exposed to JavaScript or visible in the browser.
 
 The solution is **self-contained**: it ships with an in-memory **Duende IdentityServer**
 dev Identity Provider, so you can run and test the full login → dashboard → logout
@@ -44,15 +51,18 @@ Then open: **https://localhost:5001**
 ## What you should see (end-to-end flow)
 
 1. Open `https://localhost:5001` → not authenticated → redirected to the **Login** page.
-2. Click **"Login dengan SSO"** → redirected to the dev IdP login page.
+2. Click **"Login dengan SSO"** → a full-page redirect to `/bff/login` → the dev IdP login page.
 3. Sign in with the test user → redirected back to the app.
 4. Land on the **Dashboard** showing the signed-in user's **name and role**
    (`Andi Analyst` / `InvestmentManager`) plus dummy widget cards.
-5. The dashboard calls **`GET /api/me`** with the access token and shows
-   `{ name, email, role }` — proving the token is valid against the API.
+5. The dashboard calls **`GET /api/me`** using the session cookie and shows
+   `{ name, email, role }`.
 6. The sidebar shows placeholder pages: **Stock Position**, **Shares**,
    **Chart of Account** ("Coming soon").
-7. Click **Logout** → local session + IdP session cleared → back to the Login page.
+7. Click **Logout** → cookie + IdP session cleared → back to the Login page.
+
+> **Verify the security win:** open DevTools → **Network** / **Application**. You will
+> only find the `__Host-fundadmin-bff` cookie (HttpOnly) — **no access token anywhere**.
 
 ---
 
@@ -61,24 +71,25 @@ Then open: **https://localhost:5001**
 ```mermaid
 sequenceDiagram
     autonumber
-    participant B as Browser (Blazor WASM Client)
-    participant S as Server (host + API)
+    participant B as Browser (Blazor WASM)
+    participant BFF as Server / BFF (confidential client)
     participant IdP as Duende IdentityServer (dev IdP)
 
-    B->>S: GET https://localhost:5001
-    S-->>B: Blazor WASM app (unauthenticated)
-    B->>B: [Authorize] fails → RedirectToLogin → /login
-    B->>IdP: NavigateToLogin → /connect/authorize (Code + PKCE + state)
+    B->>BFF: GET / (unauthenticated)
+    BFF-->>B: Blazor app → [Authorize] fails → /login
+    B->>BFF: Click login → full-page GET /bff/login?returnUrl=/
+    BFF->>IdP: 302 /connect/authorize (Code + PKCE + state, client_id=fundadmin-bff)
     IdP-->>B: Interactive login page (/Account/Login)
-    B->>IdP: POST credentials (analyst@fundadmin.local / Passw0rd!)
-    IdP-->>B: Redirect to /authentication/login-callback (auth code)
-    B->>IdP: Exchange code → tokens (PKCE verifier, validate state)
-    IdP-->>B: ID token + access token (name, email, role claims)
-    B->>B: Store session → redirect to "/" (Dashboard)
-    B->>S: GET /api/me (Authorization: Bearer <access_token>)
-    S->>IdP: Validate token signature/issuer (JWKS)
-    S-->>B: 200 { name, email, role }
-    Note over B: Dashboard renders welcome + widgets + /api/me result
+    B->>IdP: POST credentials
+    IdP-->>BFF: 302 /signin-oidc?code=...
+    BFF->>IdP: Exchange code → tokens (server-side, client secret + PKCE)
+    IdP-->>BFF: ID + access (+ refresh) tokens — kept on the server
+    BFF-->>B: Set HttpOnly cookie __Host-fundadmin-bff, redirect to /
+    B->>BFF: GET /bff/user (cookie + X-CSRF header)
+    BFF-->>B: 200 [ name, email, role, ... ] → dashboard renders
+    B->>BFF: GET /api/me (cookie + X-CSRF header)
+    BFF-->>B: 200 { name, email, role }
+    Note over B,BFF: Tokens never leave the server. Browser holds only the cookie.
 ```
 
 ---
@@ -89,49 +100,85 @@ sequenceDiagram
 Project-SSO/
 ├─ FundAdmin.slnx              # solution
 ├─ Client/                     # Blazor WebAssembly (runs in the browser)
-│  ├─ Program.cs               # AddOidcAuthentication (Code + PKCE)
+│  ├─ Program.cs               # HttpClient + AntiforgeryHandler, BFF auth state
 │  ├─ App.razor                # Router + AuthorizeRouteView + Cascading auth state
-│  ├─ Pages/                   # Dashboard, Login, Authentication, placeholders, AccessDenied
-│  ├─ Layout/                  # MainLayout (top bar + logout), NavMenu (sidebar)
+│  ├─ Services/
+│  │  ├─ BffAuthenticationStateProvider.cs  # reads /bff/user (no tokens client-side)
+│  │  └─ AntiforgeryHandler.cs              # adds the X-CSRF header to every call
+│  ├─ Pages/                   # Dashboard, Login, placeholders, AccessDenied
+│  ├─ Layout/                  # MainLayout, NavMenu, EmptyLayout (chromeless login)
 │  ├─ Components/              # RedirectToLogin
-│  └─ wwwroot/
-│     ├─ index.html            # loads blazor.webassembly.js + AuthenticationService.js
-│     └─ appsettings.json      # OIDC settings (Authority, ClientId, scopes, redirect URIs)
-├─ Server/                     # ASP.NET Core host + API + dev Identity Provider
-│  ├─ Program.cs               # Hosts WASM, JWT Bearer API auth, Duende IdentityServer
+│  └─ wwwroot/css/app.css      # design tokens + component styles (theme)
+├─ Server/                     # ASP.NET Core: host + BFF + API + dev Identity Provider
+│  ├─ Program.cs               # Cookie + OpenIdConnect + Duende.BFF + IdentityServer
 │  ├─ Config.cs                # In-memory clients / scopes / resources / test users
-│  ├─ Controllers/MeController.cs   # GET /api/me  ([Authorize] Bearer)
+│  ├─ Controllers/MeController.cs   # GET /api/me  ([Authorize] cookie, BFF endpoint)
 │  ├─ Pages/Account/Login.*    # Interactive IdP login page
 │  └─ Pages/Account/Logout.*   # IdP end-session (RP-initiated logout) handler
 └─ Shared/                     # Shared DTOs
    └─ UserProfileDto.cs        # { Name, Email, Role }
 ```
 
-### Authentication design
+### Roles each project plays
 
-- **Client is a public client** — Authorization Code Flow **+ PKCE**, *no client secret*
-  is ever stored in the browser. State + PKCE are handled by
-  `Microsoft.AspNetCore.Components.WebAssembly.Authentication`.
-- The **Server** plays three roles on the same origin (`https://localhost:5001`):
-  1. Hosts the compiled Blazor WASM client (`UseBlazorFrameworkFiles`).
-  2. Exposes the protected API (`/api/me`) validated with **JWT Bearer**.
-  3. Acts as the **dev Identity Provider** (Duende IdentityServer) issuing tokens.
-- IdentityServer keeps its **cookie scheme (`idsrv`) as the default** for the
-  interactive browser login; the API opts into the separate **`Bearer`** scheme
-  via `[Authorize(AuthenticationSchemes = "Bearer")]`.
+The **Server** runs four roles on one origin (`https://localhost:5001`):
 
-### OIDC configuration (`Oidc` section, consistent across Client & Server)
+1. **Host** for the compiled Blazor WASM client (`UseBlazorFrameworkFiles`).
+2. **BFF / confidential OIDC client** — does the Authorization Code + PKCE exchange
+   server-side (`AddOpenIdConnect`), stores tokens server-side, and exposes the
+   secure `/bff/*` endpoints (`Duende.BFF`).
+3. **Local API** (`/api/me`) protected by the cookie + BFF antiforgery.
+4. **Dev Identity Provider** (Duende IdentityServer) issuing the tokens.
 
-| Setting       | Value                                                        |
-| ------------- | ----------------------------------------------------------- |
-| Authority     | `https://localhost:5001`                                    |
-| ClientId      | `fundadmin-wasm`                                             |
-| ResponseType  | `code` (PKCE)                                                |
-| Scopes        | `openid`, `profile`, `email`, `fundadmin.api`               |
-| RedirectUri   | `https://localhost:5001/authentication/login-callback`      |
-| PostLogoutUri | `https://localhost:5001/authentication/logout-callback`     |
+### Authentication schemes
+
+| Scheme   | Purpose                                                           |
+| -------- | ---------------------------------------------------------------- |
+| `cookie` | The **BFF session** cookie (`__Host-fundadmin-bff`, HttpOnly, Secure, SameSite=Strict). Application **default** scheme. |
+| `oidc`   | Challenges the IdP to sign the user in (server-side code+PKCE).   |
+| `idsrv`  | IdentityServer's **own** login session for its interactive UI. Pinned via `options.Authentication.CookieAuthenticationScheme` so it is not confused with the BFF cookie. |
+
+### CSRF protection
+
+Because authentication rides on a cookie, the BFF requires a static **`X-CSRF: 1`**
+header on `/bff/user` and `/api/*`. The client adds it through `AntiforgeryHandler`;
+the server enforces it via `.AsBffApiEndpoint()` and the `/bff` management endpoints.
+
+### OIDC configuration (`Oidc` section in `Server/appsettings.json`)
+
+| Setting        | Value                                                       |
+| -------------- | ---------------------------------------------------------- |
+| Authority      | `https://localhost:5001`                                   |
+| ClientId       | `fundadmin-bff`                                            |
+| ClientSecret   | `fundadmin-bff-dev-secret` (dev only — move to a secret store) |
+| Grant / PKCE   | Authorization Code + PKCE (S256)                           |
+| Scopes         | `openid`, `profile`, `email`, `fundadmin.api`, `offline_access` |
+| RedirectUri    | `https://localhost:5001/signin-oidc`                       |
+| PostLogoutUri  | `https://localhost:5001/signout-callback-oidc`            |
+
+> The **Client** (`Client/wwwroot/appsettings.json`) holds **no** OIDC settings —
+> in the BFF model the browser never speaks OIDC.
 
 ---
+
+## User interface
+
+A small, consistent design system lives in `Client/wwwroot/css/app.css` (CSS
+custom-property tokens) plus the scoped `*.razor.css` files:
+
+- **Theme** — navy → slate gradient brand (`#1e3a8a` → `#0f172a`), light slate
+  background, rounded cards, soft shadows. Professional fintech look.
+- **Login** — full-screen, chromeless page (`EmptyLayout`) with a centered card,
+  brand mark, the dev credentials, and an `+ MFA (TOTP)` hint.
+- **Shell** — sticky white top bar with the app title and a **user chip**
+  (initials avatar + name + role) and Logout; a dark gradient **sidebar** with
+  grouped sections (Report, Master Data) and an active-item accent bar.
+- **Dashboard** — a gradient welcome hero (name + role pill), three **stat cards**
+  with colored icon badges, and a dark `/api/me` verification panel.
+- **Placeholders / Access denied** — shared `.empty-state` and `.page-head`
+  styles for a consistent "coming soon" / message look.
+
+Icons come from **Bootstrap Icons** (CDN); the grid/utilities from **Bootstrap**.
 
 ## Screenshots
 
@@ -142,12 +189,7 @@ Project-SSO/
 | Login page (SSO button) | `docs/01-login.png` |
 | Dev IdP sign-in | `docs/02-idp-login.png` |
 | Dashboard (welcome + widgets + `/api/me`) | `docs/03-dashboard.png` |
-| Placeholder page (Coming soon) | `docs/04-placeholder.png` |
-
-<!--
-To embed an image once captured, replace the path cell above with, e.g.:
-![Dashboard](docs/03-dashboard.png)
--->
+| Network tab — only a cookie, no token | `docs/04-network-no-token.png` |
 
 ---
 
@@ -155,43 +197,44 @@ To embed an image once captured, replace the path cell above with, e.g.:
 
 Swapping providers requires **configuration changes only** — no application code:
 
-1. In `Client/wwwroot/appsettings.json` and `Server/appsettings.json`, update the
-   `Oidc` section (`Authority`, `ClientId`, redirect URIs, scopes).
+1. In `Server/appsettings.json`, update the `Oidc` section (`Authority`, `ClientId`,
+   `ClientSecret`, scopes).
 2. In `Server/Program.cs`, delete the `AddIdentityServer(...)` block and the
    `app.UseIdentityServer()` call, and remove the `Server/Pages/Account/*` pages
    (those exist only for the in-memory dev IdP).
-3. Register the same redirect URIs in your real provider.
+3. Register these redirect URIs in your real provider:
+   `https://localhost:5001/signin-oidc` and `https://localhost:5001/signout-callback-oidc`.
 
-Search for the `TODO:` comments in `Server/Program.cs` and `Client/Program.cs`.
+Search for the `TODO:` comments in `Server/Program.cs` and `Server/Config.cs`.
 
 ---
 
 ## Troubleshooting
 
 **"A project with an Output Type of Class Library cannot be started directly."**
-You are trying to run `Client` or `Shared`. In a hosted Blazor WASM model only
-**`Server`** is executable — set it as the startup project (Visual Studio) or run
-`dotnet run --project Server`.
+You are trying to run `Client` or `Shared`. Only **`Server`** is executable — set it
+as the startup project, or run `dotnet run --project Server`.
 
-**`Could not find 'AuthenticationService.init' ('AuthenticationService' was undefined).`**
-`wwwroot/index.html` is missing the auth library's JavaScript. It must include,
-right after `blazor.webassembly.js`:
+**Login keeps returning to the sign-in page ("User is not authenticated" loop).**
+IdentityServer must read its session from its own `idsrv` scheme, not the BFF
+default `cookie` scheme. This is pinned in `Server/Program.cs` with
+`options.Authentication.CookieAuthenticationScheme = IdentityServerConstants.DefaultCookieAuthenticationScheme;`.
 
-```html
-<script src="_content/Microsoft.AspNetCore.Components.WebAssembly.Authentication/AuthenticationService.js"></script>
-```
+**Login succeeds but the dashboard never appears (stays anonymous).**
+The client reads `/bff/user`, whose claim values are **not all strings**
+(`bff:session_expires_in` is a number). The auth-state provider deserializes each
+value as a `JsonElement` and stringifies it — deserializing straight into `string`
+throws and silently logs the user out.
 
-After fixing it, do a hard refresh (Ctrl+Shift+R) so the cached `index.html` is replaced.
+**Browser shows a certificate warning on `https://localhost:5001`.**
+Trust the local dev cert once: `dotnet dev-certs https --trust` (then restart the browser).
 
-**Browser shows a certificate / "connection is not private" warning on `https://localhost:5001`.**
-Trust the local dev certificate once: `dotnet dev-certs https --trust` (then restart the browser).
-
-**`ERR_CONNECTION_REFUSED` on a `.../browserLinkSignalR/...` URL in the console.**
+**`ERR_CONNECTION_REFUSED` / `browserLinkSignalR` noise in the console.**
 Harmless — that is Visual Studio's Browser Link feature, not the application.
 
 **A Duende license warning appears on startup.**
-Expected and **allowed for development/testing**. A license is only required for
-production use.
+Expected and **allowed for development/testing**. Both `Duende.IdentityServer` and
+`Duende.BFF` require a license only for production use.
 
 ---
 
@@ -202,5 +245,4 @@ production use.
 - The UI text is in Indonesian; only the OIDC/business identifiers are in English.
 - The business modules (Stock Position, Shares, Chart of Account) are navigation
   **placeholders** at this stage — no business logic yet.
-</content>
-</invoke>
+```

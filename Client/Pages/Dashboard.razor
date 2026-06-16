@@ -6,82 +6,61 @@
 
 <PageTitle>Dashboard - FundAdmin Asset Management</PageTitle>
 
-<div class="container-fluid">
+<div class="container-fluid px-0">
     @if (userProfile != null)
     {
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="alert alert-info">
-                    <h4 class="alert-heading">
-                        Selamat datang, @userProfile.Name (@userProfile.Role)
-                    </h4>
-                    <p class="mb-0">Email: @userProfile.Email</p>
+        <div class="welcome-hero mb-4">
+            <h1>Selamat datang, @userProfile.Name <span class="role-pill">@userProfile.Role</span></h1>
+            <div class="sub"><span class="bi bi-envelope me-1"></span>@userProfile.Email</div>
+        </div>
+
+        <div class="stat-grid mb-4">
+            <div class="stat-card">
+                <div class="icon blue"><span class="bi bi-pie-chart-fill"></span></div>
+                <div>
+                    <div class="label">Total Fund Aktif</div>
+                    <div class="value">12</div>
+                    <div class="hint">Reksa Dana aktif periode ini</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="icon green"><span class="bi bi-clock-history"></span></div>
+                <div>
+                    <div class="label">Posisi Terakhir Diperbarui</div>
+                    <div class="value">@DateTime.Now.ToString("HH:mm")</div>
+                    <div class="hint">@DateTime.Now.ToString("dd MMM yyyy") &middot; waktu server</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="icon amber"><span class="bi bi-activity"></span></div>
+                <div>
+                    <div class="label">Aktivitas Terbaru</div>
+                    <div class="value">5</div>
+                    <div class="hint">Transaksi hari ini</div>
                 </div>
             </div>
         </div>
 
-        <div class="row mb-4">
-            <div class="col-md-4 mb-3">
-                <div class="card border-primary shadow-sm h-100">
-                    <div class="card-body">
-                        <h5 class="card-title text-primary">
-                            <span class="bi bi-pie-chart me-2"></span>Total Fund Aktif
-                        </h5>
-                        <h2 class="card-text">12</h2>
-                        <small class="text-muted">Reksa Dana aktif periode ini</small>
-                    </div>
-                </div>
+        <div class="card">
+            <div class="card-header d-flex align-items-center">
+                <span class="bi bi-shield-check me-2 text-success"></span>
+                Verifikasi Sesi (GET /api/me)
             </div>
-            <div class="col-md-4 mb-3">
-                <div class="card border-success shadow-sm h-100">
-                    <div class="card-body">
-                        <h5 class="card-title text-success">
-                            <span class="bi bi-clock-history me-2"></span>Posisi Terakhir Diperbarui
-                        </h5>
-                        <h2 class="card-text">@DateTime.Now.ToString("dd MMM yyyy HH:mm")</h2>
-                        <small class="text-muted">Waktu server</small>
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    Hasil panggilan API <code>/api/me</code> menggunakan cookie sesi BFF
+                    (tanpa token di browser):
+                </p>
+                <pre class="api-pre"><code>@apiResult</code></pre>
+                @if (isLoadingApi)
+                {
+                    <div class="text-center mt-3">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                            <span class="visually-hidden">Memuat...</span>
+                        </div>
+                        <span class="ms-2">Memanggil API...</span>
                     </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-3">
-                <div class="card border-warning shadow-sm h-100">
-                    <div class="card-body">
-                        <h5 class="card-title text-warning">
-                            <span class="bi bi-activity me-2"></span>Aktivitas Terbaru
-                        </h5>
-                        <h2 class="card-text">5</h2>
-                        <small class="text-muted">Transaksi hari ini</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row">
-            <div class="col-12">
-                <div class="card shadow-sm">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <span class="bi bi-shield-check me-2"></span>
-                            Verifikasi Access Token (GET /api/me)
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted">
-                            Berikut adalah hasil panggilan API <code>/api/me</code>
-                            menggunakan access token yang diperoleh dari OIDC flow:
-                        </p>
-                        <pre class="bg-light p-3 rounded"><code>@apiResult</code></pre>
-                        @if (isLoadingApi)
-                        {
-                            <div class="text-center">
-                                <div class="spinner-border spinner-border-sm text-primary" role="status">
-                                    <span class="visually-hidden">Memuat...</span>
-                                </div>
-                                <span class="ms-2">Memanggil API...</span>
-                            </div>
-                        }
-                    </div>
-                </div>
+                }
             </div>
         </div>
     }
@@ -91,7 +70,7 @@
             <div class="spinner-border text-primary" role="status">
                 <span class="visually-hidden">Memuat...</span>
             </div>
-            <p class="mt-2">Memuat data pengguna...</p>
+            <p class="mt-2 text-muted">Memuat data pengguna...</p>
         </div>
     }
 </div>

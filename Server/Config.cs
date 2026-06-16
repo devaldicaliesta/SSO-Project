@@ -103,4 +103,16 @@ public static class Config
                 }
             }
         };
+
+    // Dev TOTP secrets (Base32) per user subject id, used for the second factor.
+    // TODO: in production generate a unique secret per user at enrollment time and
+    //       store it securely (encrypted) - never hard-code shared dev secrets.
+    private static readonly IReadOnlyDictionary<string, string> MfaSecrets =
+        new Dictionary<string, string>
+        {
+            ["1"] = "FUNDADMINDEVSECRET234567"
+        };
+
+    public static string GetMfaSecret(string subjectId) =>
+        MfaSecrets.TryGetValue(subjectId, out var secret) ? secret : "FUNDADMINDEVSECRET234567";
 }

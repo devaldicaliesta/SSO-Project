@@ -1,49 +1,76 @@
 @page "/login"
+@layout EmptyLayout
 @using Microsoft.AspNetCore.Components.Authorization
 @inject NavigationManager Navigation
 
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-6 col-lg-4">
-            <div class="card shadow">
-                <div class="card-body text-center p-5">
-                    <h3 class="card-title mb-4">
-                        <span class="bi bi-shield-lock me-2"></span>
-                        FundAdmin Asset Management
-                    </h3>
+<div class="login-wrap">
+    <div class="login-card">
+        <div class="login-brand">
+            <span class="login-mark"><span class="bi bi-graph-up-arrow"></span></span>
+        </div>
+        <h1 class="login-title">FundAdmin Asset Management</h1>
+        <p class="login-sub">Sistem Manajemen Aset Reksa Dana</p>
 
-                    <p class="text-muted mb-4">
-                        Aplikasi Manajemen Aset Reksa Dana
-                    </p>
+        <button class="btn btn-primary btn-lg w-100 login-btn" @onclick="LoginWithSSO">
+            <span class="bi bi-box-arrow-in-right me-2"></span>
+            Login dengan SSO
+        </button>
 
-                    <hr />
+        <div class="login-divider"><span>akun pengembangan</span></div>
 
-                    <p class="text-muted small mb-4">
-                        Silakan login menggunakan akun SSO Anda untuk mengakses sistem.
-                    </p>
-
-                    <button class="btn btn-primary btn-lg w-100" @onclick="LoginWithSSO">
-                        <span class="bi bi-box-arrow-in-right me-2"></span>
-                        Login dengan SSO
-                    </button>
-
-                    <div class="mt-3">
-                        <small class="text-muted">
-                            Kredensial test: analyst@fundadmin.local / Passw0rd!
-                        </small>
-                    </div>
-                </div>
-            </div>
+        <div class="login-cred">
+            <div><span class="bi bi-person me-2"></span>analyst@fundadmin.local</div>
+            <div><span class="bi bi-key me-2"></span>Passw0rd! <span class="login-mfa">+ MFA (TOTP)</span></div>
         </div>
     </div>
+    <p class="login-foot">Diamankan dengan OIDC &middot; pola Backend-for-Frontend</p>
 </div>
+
+<style>
+    .login-wrap {
+        min-height: 100vh;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
+        padding: 1.5rem;
+    }
+    .login-card {
+        background: #fff; width: 100%; max-width: 410px;
+        padding: 2.5rem 2.25rem; border-radius: 20px; text-align: center;
+        box-shadow: 0 25px 60px rgba(0, 0, 0, .45);
+    }
+    .login-brand { margin-bottom: 1.1rem; }
+    .login-mark {
+        display: inline-grid; place-items: center; width: 60px; height: 60px;
+        border-radius: 16px; font-size: 1.7rem; color: #fff;
+        background: linear-gradient(135deg, #3b82f6, #1e3a8a);
+        box-shadow: 0 10px 22px rgba(37, 99, 235, .4);
+    }
+    .login-title { font-size: 1.3rem; font-weight: 700; color: #0f172a; margin: 0; }
+    .login-sub { color: #64748b; font-size: .9rem; margin: .35rem 0 1.75rem; }
+    .login-btn { padding: .7rem; font-weight: 600; }
+    .login-divider {
+        display: flex; align-items: center; text-align: center;
+        color: #94a3b8; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em;
+        margin: 1.5rem 0 1rem;
+    }
+    .login-divider::before, .login-divider::after {
+        content: ""; flex: 1; height: 1px; background: #e2e8f0;
+    }
+    .login-divider span { padding: 0 .75rem; }
+    .login-cred {
+        background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;
+        padding: .8rem 1rem; font-size: .85rem; color: #334155; text-align: left;
+        font-family: ui-monospace, "Cascadia Code", monospace; line-height: 1.9;
+    }
+    .login-mfa { color: #2563eb; font-weight: 600; font-family: 'Segoe UI', sans-serif; }
+    .login-foot { color: rgba(255, 255, 255, .65); font-size: .75rem; margin-top: 1.25rem; }
+</style>
 
 @code {
     [CascadingParameter]
     private Task<AuthenticationState>? AuthState { get; set; }
 
-    // If the user is already signed in (e.g. they navigated back here after a
-    // successful login callback), go straight to the dashboard.
+    // If the user is already signed in, go straight to the dashboard.
     protected override async Task OnInitializedAsync()
     {
         if (AuthState is not null)
@@ -58,8 +85,7 @@
 
     // Full-page navigation to the BFF login endpoint. The SERVER performs the
     // OIDC challenge (Authorization Code + PKCE) and, on success, sets the
-    // HttpOnly session cookie and returns the user to "/". forceLoad is required
-    // because /bff/login is a server endpoint, not a Blazor route.
+    // HttpOnly session cookie and returns the user to "/".
     private void LoginWithSSO()
     {
         Navigation.NavigateTo("bff/login?returnUrl=/", forceLoad: true);

@@ -6,44 +6,60 @@
 
 main {
     flex: 1;
+    min-width: 0;
 }
 
 .sidebar {
-    background-image: linear-gradient(180deg, rgb(5, 39, 103) 0%, #3a0647 70%);
+    background: linear-gradient(180deg, #0f172a 0%, #1e3a8a 100%);
+    box-shadow: inset -1px 0 0 rgba(255, 255, 255, .06);
 }
 
 .top-row {
-    background-color: #f7f7f7;
-    border-bottom: 1px solid #d6d5d5;
-    justify-content: flex-end;
-    height: 3.5rem;
+    background-color: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+    height: 3.75rem;
     display: flex;
     align-items: center;
 }
 
-    .top-row ::deep a, .top-row ::deep .btn-link {
-        white-space: nowrap;
-        margin-left: 1.5rem;
-        text-decoration: none;
+    .top-row ::deep .app-title {
+        font-weight: 700;
+        color: #0f172a;
+        font-size: 1.02rem;
+        letter-spacing: -.01em;
     }
 
-    .top-row ::deep a:hover, .top-row ::deep .btn-link:hover {
-        text-decoration: underline;
+    /* User chip (avatar + name/role) */
+    .top-row ::deep .user-chip {
+        display: flex;
+        align-items: center;
+        gap: .6rem;
+        padding: .25rem .25rem .25rem .25rem;
     }
 
-    .top-row ::deep a:first-child {
-        overflow: hidden;
-        text-overflow: ellipsis;
+    .top-row ::deep .avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #2563eb, #1e3a8a);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        font-size: .85rem;
     }
+
+    .top-row ::deep .user-meta { line-height: 1.15; text-align: right; }
+    .top-row ::deep .user-meta .name { font-weight: 600; font-size: .85rem; color: #0f172a; }
+    .top-row ::deep .user-meta .role { font-size: .72rem; color: #64748b; }
 
 @media (max-width: 640.98px) {
     .top-row {
         justify-content: space-between;
     }
 
-    .top-row ::deep a, .top-row ::deep .btn-link {
-        margin-left: 0;
-    }
+    .top-row ::deep .user-meta { display: none; }
 }
 
 @media (min-width: 641px) {
@@ -52,7 +68,7 @@ main {
     }
 
     .sidebar {
-        width: 250px;
+        width: 260px;
         height: 100vh;
         position: sticky;
         top: 0;
@@ -64,14 +80,13 @@ main {
         z-index: 1;
     }
 
-    .top-row.auth ::deep a:first-child {
-        flex: 1;
-        text-align: right;
-        width: 0;
-    }
-
     .top-row, article {
         padding-left: 2rem !important;
         padding-right: 1.5rem !important;
     }
+}
+
+article.content {
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
 }

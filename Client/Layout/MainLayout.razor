@@ -14,16 +14,17 @@
 
     <main>
         <div class="top-row px-4 d-flex justify-content-between align-items-center">
-            <div>
-                <strong>FundAdmin Asset Management</strong>
-            </div>
+            <div class="app-title">FundAdmin Asset Management</div>
             <div class="d-flex align-items-center">
                 <AuthorizeView>
                     <Authorized>
-                        <span class="me-3 text-muted small">
-                            @context.User.FindFirst("name")?.Value 
-                            (@context.User.FindFirst("role")?.Value)
-                        </span>
+                        <div class="user-chip me-3">
+                            <div class="user-meta">
+                                <div class="name">@context.User.FindFirst("name")?.Value</div>
+                                <div class="role">@context.User.FindFirst("role")?.Value</div>
+                            </div>
+                            <div class="avatar">@GetInitials(context.User.FindFirst("name")?.Value)</div>
+                        </div>
                         <button class="btn btn-outline-danger btn-sm" @onclick="() => Logout(context.User)">
                             <span class="bi bi-box-arrow-right me-1"></span>Logout
                         </button>
@@ -39,6 +40,16 @@
 </div>
 
 @code {
+    // Two-letter initials for the avatar badge (e.g. "Andi Analyst" -> "AA").
+    private static string GetInitials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 1
+            ? parts[0][..1].ToUpper()
+            : (parts[0][..1] + parts[^1][..1]).ToUpper();
+    }
+
     // The BFF issues a per-session logout URL (a "bff:logout_url" claim) that
     // carries the session id, so logout cannot be triggered cross-site. We do a
     // full-page navigation to it: the server clears the cookie + calls the IdP
