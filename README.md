@@ -1,30 +1,106 @@
-# FundAdmin Asset Management — Blazor WebAssembly (.NET 8) + BFF SSO
+# FundAdmin SSO — Master Identity Platform (.NET 10) · Blazor WASM + BFF
 
-An asset-management system for mutual funds, built as a **hosted Blazor WebAssembly**
-application that authenticates through **OIDC Single Sign-On** using the
-**Backend-for-Frontend (BFF)** security pattern.
+A centralized **Single Sign-On / identity platform** for an OJK-supervised multifinance
+context, built as a **hosted Blazor WebAssembly** app secured with the
+**Backend-for-Frontend (BFF)** pattern. It provides persistent **user & password
+management**, permission-based **RBAC with server-driven menus**, and **activity
+(audit) monitoring** — backed by **ASP.NET Core Identity + SQL Server** and
+**Duende IdentityServer**.
 
 > **Why BFF?** In a plain SPA the access/ID tokens live in the browser (readable by
-> JavaScript, exposed in the Network tab, vulnerable to XSS token theft). With BFF
-> the **server** performs the OIDC code exchange and **keeps the tokens server-side**.
-> The browser only ever holds an **HttpOnly, Secure session cookie** — no token is
-> ever exposed to JavaScript or visible in the browser.
+> JavaScript, exposed in the Network tab, vulnerable to XSS token theft). With BFF the
+> **server** performs the OIDC code exchange and **keeps the tokens server-side**. The
+> browser only ever holds an **HttpOnly, Secure session cookie** — no token is ever
+> exposed to JavaScript.
 
-The solution is **self-contained**: it ships with an in-memory **Duende IdentityServer**
-dev Identity Provider, so you can run and test the full login → dashboard → logout
-flow with a single command — **no external SSO provider required**.
+The solution is **self-contained**: it ships with a Duende IdentityServer dev IdP and an
+idempotent seeder, so the full **login → MFA → (forced password change) → dashboard**
+flow runs with a single command against your local SQL Server.
+
+---
+
+## Highlights
+
+- **.NET 10** across all projects (`net10.0`), ASP.NET Core / EF Core / Identity `10.0.9`.
+- **Persistent identity** — ASP.NET Core Identity (GUID keys) over EF Core + SQL Server.
+- **Password management** — policy (≥12 chars, complexity), **no-reuse history** (last 5),
+  **adaptive lockout**, admin reset (one-time temp password), and **forced password change**
+  on first login.
+- **MFA (TOTP)** — per-user secret, **encrypted at rest** via the Data Protection API; QR
+  enrollment; `amr = [pwd, mfa]`.
+- **Permission-based RBAC** — users → roles → permissions, plus per-user grant/deny
+  overrides (**deny wins**). API gated by `[Authorize(Policy = "perm:...")]`; the navigation
+  menu is **server-resolved** (`GET /api/menu`) so the UI only shows what you may access.
+- **Activity monitoring** — append-only `AuditEvents`; an EF `SaveChanges` interceptor
+  audits `[Auditable]` entity changes in-transaction, plus explicit auth/authz/user-mgmt
+  events.
+- **Admin console** — Users (create / enable / disable / unlock / reset password / assign
+  roles), Roles & Permissions, and an Activity Log viewer.
+- **Hardening** — `__Host-` HttpOnly/Secure/SameSite cookie, CSRF header, security headers
+  (CSP/HSTS/etc.), secrets out of source.
+
+---
+
+## Solution structure (layered)
+
+```
+Project-SSO/
+├─ FundAdmin.slnx
+├─ docs/                     # ARCHITECTURE-SSO-Master-v1.md, RUN.md, P0/P1 notes
+├─ Client/                   # Blazor WebAssembly SPA (browser; no tokens)
+│  ├─ Services/              # BffAuthenticationStateProvider, AntiforgeryHandler
+│  ├─ Pages/                 # Dashboard, Login, Admin/Users, Admin/Roles, Admin/Audit, ...
+│  └─ Layout/                # MainLayout, NavMenu (server-driven), EmptyLayout
+├─ Server/                   # ASP.NET Core host: BFF + API + dev IdP + composition root
+│  ├─ Program.cs             # Cookie+OIDC+BFF, IdentityServer, DI, migrate+seed, headers
+│  ├─ Controllers/           # Me, Menu, Users, Roles, Permissions, Audit
+│  ├─ Pages/Account/         # Login, Mfa, ChangePassword, Logout (interactive IdP UI)
+│  └─ Services/              # TotpService, LoginStateProtector, ProfileService, ...
+├─ Shared/                   # DTOs shared with the WASM client
+├─ SSO.Domain/               # Entities + enums (persistence-ignorant)
+│  ├─ Identity/  Rbac/  Auditing/  Enums/
+├─ SSO.Application/          # Abstractions / use-case interfaces (no EF, no ASP.NET)
+└─ SSO.Infrastructure/       # EF Core DbContext, configs, migrations, services, seeder
+   └─ Persistence/  Rbac/  Auditing/  Security/  Seeding/
+```
+
+Dependency flow: `Domain ← Application ← Infrastructure ← Server`, and `Client → Shared`.
+See **`docs/ARCHITECTURE-SSO-Master-v1.md`** for the full design and roadmap.
 
 ---
 
 ## Prerequisites
 
-- **.NET 8 SDK** (the projects target `net8.0`; a newer SDK such as .NET 9/10 also
-  builds them as long as the .NET 8 runtime/targeting pack is available).
-- A trusted local HTTPS development certificate:
+- **.NET 10 SDK** (projects target `net10.0`).
+- **SQL Server** reachable locally. Default config points at instance **`DEVALDICALIESTA`**
+  (= `localhost`) and database **`SSO-PROJECT`** with Windows Authentication. Adjust the
+  connection string for your machine (see below).
+- A trusted local HTTPS dev certificate:
 
   ```bash
   dotnet dev-certs https --trust
   ```
+
+### Database connection
+
+Set in `Server/appsettings.Development.json` → `ConnectionStrings:Sso`:
+
+```json
+"ConnectionStrings": {
+  "Sso": "Server=DEVALDICALIESTA;Database=SSO-PROJECT;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=true"
+}
+```
+
+> Change `Server=` to your instance (e.g. `localhost`, `.\SQLEXPRESS`, `(localdb)\MSSQLLocalDB`).
+> **Make sure SSMS is connected to the same instance** — otherwise the DB looks "missing"
+> when it was actually created on a different server.
+
+The schema is created automatically: on startup the app runs **`Database.MigrateAsync()`**
+(applies the `InitialIdentityRbacAudit` migration, creating the DB if needed) and then an
+**idempotent seeder** inserts the permission catalogue, base roles, the menu tree, and the
+break-glass admin.
+
+---
 
 ## Run
 
@@ -32,41 +108,42 @@ flow with a single command — **no external SSO provider required**.
 dotnet run --project Server
 ```
 
-Then open: **https://localhost:5001**
+Open **https://localhost:5001**.
 
-> In Visual Studio: make sure **`Server`** is the startup project (right-click
-> `Server` → **Set as Startup Project**), then press **F5**. The `Client` and
-> `Shared` projects are class libraries and cannot be started directly.
+> In Visual Studio set **`Server`** as the startup project and press **F5**.
+> `Client`, `Shared`, `SSO.*` are libraries and cannot be started directly.
 
-### Test user
+### Bootstrap admin (seeded)
 
-| Username                     | Password    | Role               |
-| ---------------------------- | ----------- | ------------------ |
-| `analyst@fundadmin.local`    | `Passw0rd!` | InvestmentManager  |
+| Username                  | Password               | Role          | First login           |
+| ------------------------- | ---------------------- | ------------- | --------------------- |
+| `admin@fundadmin.local`   | `Admin#FundAdmin2026!` | Administrator | **must change** + MFA |
 
-> The login form is pre-filled with these credentials for convenience.
+Configurable via the `Admin` section in `Server/appsettings.json` (`Admin:Email`,
+`Admin:Password`). The seeder creates this user with `MustChangePassword = true`.
 
----
-
-## What you should see (end-to-end flow)
-
-1. Open `https://localhost:5001` → not authenticated → redirected to the **Login** page.
-2. Click **"Login dengan SSO"** → a full-page redirect to `/bff/login` → the dev IdP login page.
-3. Sign in with the test user → redirected back to the app.
-4. Land on the **Dashboard** showing the signed-in user's **name and role**
-   (`Andi Analyst` / `InvestmentManager`) plus dummy widget cards.
-5. The dashboard calls **`GET /api/me`** using the session cookie and shows
-   `{ name, email, role }`.
-6. The sidebar shows placeholder pages: **Stock Position**, **Shares**,
-   **Chart of Account** ("Coming soon").
-7. Click **Logout** → cookie + IdP session cleared → back to the Login page.
-
-> **Verify the security win:** open DevTools → **Network** / **Application**. You will
-> only find the `__Host-fundadmin-bff` cookie (HttpOnly) — **no access token anywhere**.
+**Seeded roles:** `Administrator` (all permissions) and `InvestmentManager` (read-only:
+dashboard, stock-position, shares, chart-of-account).
 
 ---
 
-## Authentication flow (sequence)
+## End-to-end flow
+
+1. Open `https://localhost:5001` → not authenticated → **Login** page.
+2. Click **"Login dengan SSO"** → `/bff/login` → the dev IdP login page.
+3. Enter the admin credentials → **MFA**: scan the QR with an authenticator app, enter the
+   6-digit code.
+4. **Forced password change** (first login): set a new password (≥12, complexity, and **not**
+   one of your recent passwords).
+5. Land on the **Dashboard**; the left menu is rendered from `GET /api/menu` for your
+   permissions. As Administrator you also see **Administration → Users / Roles & Permissions
+   / Activity Log**.
+6. **Logout** → cookie + IdP session cleared.
+
+> **Verify the security win:** DevTools → Application/Network shows only the
+> `__Host-fundadmin-bff` cookie (HttpOnly) — **no token anywhere**.
+
+### Authentication flow (sequence)
 
 ```mermaid
 sequenceDiagram
@@ -74,175 +151,99 @@ sequenceDiagram
     participant B as Browser (Blazor WASM)
     participant BFF as Server / BFF (confidential client)
     participant IdP as Duende IdentityServer (dev IdP)
+    participant DB as SQL Server (Identity)
 
-    B->>BFF: GET / (unauthenticated)
-    BFF-->>B: Blazor app → [Authorize] fails → /login
-    B->>BFF: Click login → full-page GET /bff/login?returnUrl=/
-    BFF->>IdP: 302 /connect/authorize (Code + PKCE + state, client_id=fundadmin-bff)
-    IdP-->>B: Interactive login page (/Account/Login)
-    B->>IdP: POST credentials
+    B->>BFF: GET / (unauthenticated) → /login → click login → GET /bff/login
+    BFF->>IdP: 302 /connect/authorize (Code + PKCE)
+    IdP-->>B: /Account/Login (interactive)
+    B->>IdP: POST username + password
+    IdP->>DB: SignInManager.CheckPasswordSignInAsync (+ lockout)
+    IdP-->>B: 302 /Account/Mfa?t=<signed token>  (TOTP)
+    B->>IdP: POST 6-digit code
+    opt MustChangePassword
+        IdP-->>B: 302 /Account/ChangePassword?t=... → new password
+    end
     IdP-->>BFF: 302 /signin-oidc?code=...
-    BFF->>IdP: Exchange code → tokens (server-side, client secret + PKCE)
-    IdP-->>BFF: ID + access (+ refresh) tokens — kept on the server
+    BFF->>IdP: Exchange code → tokens (server-side)
+    IdP->>DB: ProfileService resolves role + permission claims
     BFF-->>B: Set HttpOnly cookie __Host-fundadmin-bff, redirect to /
-    B->>BFF: GET /bff/user (cookie + X-CSRF header)
-    BFF-->>B: 200 [ name, email, role, ... ] → dashboard renders
-    B->>BFF: GET /api/me (cookie + X-CSRF header)
-    BFF-->>B: 200 { name, email, role }
+    B->>BFF: GET /bff/user, /api/menu, /api/me (cookie + X-CSRF)
     Note over B,BFF: Tokens never leave the server. Browser holds only the cookie.
 ```
 
 ---
 
-## Architecture
+## Authorization model
 
-```
-Project-SSO/
-├─ FundAdmin.slnx              # solution
-├─ Client/                     # Blazor WebAssembly (runs in the browser)
-│  ├─ Program.cs               # HttpClient + AntiforgeryHandler, BFF auth state
-│  ├─ App.razor                # Router + AuthorizeRouteView + Cascading auth state
-│  ├─ Services/
-│  │  ├─ BffAuthenticationStateProvider.cs  # reads /bff/user (no tokens client-side)
-│  │  └─ AntiforgeryHandler.cs              # adds the X-CSRF header to every call
-│  ├─ Pages/                   # Dashboard, Login, placeholders, AccessDenied
-│  ├─ Layout/                  # MainLayout, NavMenu, EmptyLayout (chromeless login)
-│  ├─ Components/              # RedirectToLogin
-│  └─ wwwroot/css/app.css      # design tokens + component styles (theme)
-├─ Server/                     # ASP.NET Core: host + BFF + API + dev Identity Provider
-│  ├─ Program.cs               # Cookie + OpenIdConnect + Duende.BFF + IdentityServer
-│  ├─ Config.cs                # In-memory clients / scopes / resources / test users
-│  ├─ Controllers/MeController.cs   # GET /api/me  ([Authorize] cookie, BFF endpoint)
-│  ├─ Pages/Account/Login.*    # Interactive IdP login page
-│  └─ Pages/Account/Logout.*   # IdP end-session (RP-initiated logout) handler
-└─ Shared/                     # Shared DTOs
-   └─ UserProfileDto.cs        # { Name, Email, Role }
-```
+- **Permissions** are the atomic unit (`dashboard.view`, `master-data.shares.manage`,
+  `admin.users.manage`, …). Roles bundle permissions; users get roles plus optional
+  per-user **grant/deny** overrides (deny always wins).
+- **API**: a dynamic `IAuthorizationPolicyProvider` turns `perm:<code>` into a policy, so
+  controllers use `[Authorize(Policy = "perm:admin.users.manage")]` with no pre-registration.
+- **Claims**: a custom `IProfileService` resolves the effective permission set and issues
+  `role` + `permission` claims into the tokens (kept server-side by the BFF).
+- **Menu**: `GET /api/menu` returns only the nodes whose required permission the caller
+  holds; the Blazor `NavMenu` renders that tree (no hardcoded links).
 
-### Roles each project plays
+## Activity monitoring
 
-The **Server** runs four roles on one origin (`https://localhost:5001`):
+Every sensitive action is written to `AuditEvents` (who / what / when / outcome /
+correlation id / IP / user-agent):
 
-1. **Host** for the compiled Blazor WASM client (`UseBlazorFrameworkFiles`).
-2. **BFF / confidential OIDC client** — does the Authorization Code + PKCE exchange
-   server-side (`AddOpenIdConnect`), stores tokens server-side, and exposes the
-   secure `/bff/*` endpoints (`Duende.BFF`).
-3. **Local API** (`/api/me`) protected by the cookie + BFF antiforgery.
-4. **Dev Identity Provider** (Duende IdentityServer) issuing the tokens.
+- **Authentication** — login success/failure, MFA success/failure, password change, logout.
+- **User management** — create / enable / disable / unlock / reset / role change /
+  permission change.
+- **Data changes** — an EF Core `SaveChanges` interceptor records create/update/delete of
+  `[Auditable]` entities (secrets/hashes redacted).
 
-### Authentication schemes
+> Tamper-evident **SQL Server Ledger** for `AuditEvents` is a documented next-step
+> hardening (see `docs/`); today it is a standard append-only table.
 
-| Scheme   | Purpose                                                           |
-| -------- | ---------------------------------------------------------------- |
-| `cookie` | The **BFF session** cookie (`__Host-fundadmin-bff`, HttpOnly, Secure, SameSite=Strict). Application **default** scheme. |
-| `oidc`   | Challenges the IdP to sign the user in (server-side code+PKCE).   |
-| `idsrv`  | IdentityServer's **own** login session for its interactive UI. Pinned via `options.Authentication.CookieAuthenticationScheme` so it is not confused with the BFF cookie. |
+## Authentication schemes
 
-### CSRF protection
+| Scheme   | Purpose |
+| -------- | ------- |
+| `cookie` | BFF session cookie (`__Host-fundadmin-bff`, HttpOnly/Secure/SameSite=Strict). App default. |
+| `oidc`   | Challenges the IdP (server-side Code + PKCE). |
+| `idsrv`  | IdentityServer's own interactive-login session. |
 
-Because authentication rides on a cookie, the BFF requires a static **`X-CSRF: 1`**
-header on `/bff/user` and `/api/*`. The client adds it through `AntiforgeryHandler`;
-the server enforces it via `.AsBffApiEndpoint()` and the `/bff` management endpoints.
-
-### OIDC configuration (`Oidc` section in `Server/appsettings.json`)
-
-| Setting        | Value                                                       |
-| -------------- | ---------------------------------------------------------- |
-| Authority      | `https://localhost:5001`                                   |
-| ClientId       | `fundadmin-bff`                                            |
-| ClientSecret   | `fundadmin-bff-dev-secret` (dev only — move to a secret store) |
-| Grant / PKCE   | Authorization Code + PKCE (S256)                           |
-| Scopes         | `openid`, `profile`, `email`, `fundadmin.api`, `offline_access` |
-| RedirectUri    | `https://localhost:5001/signin-oidc`                       |
-| PostLogoutUri  | `https://localhost:5001/signout-callback-oidc`            |
-
-> The **Client** (`Client/wwwroot/appsettings.json`) holds **no** OIDC settings —
-> in the BFF model the browser never speaks OIDC.
-
----
-
-## User interface
-
-A small, consistent design system lives in `Client/wwwroot/css/app.css` (CSS
-custom-property tokens) plus the scoped `*.razor.css` files:
-
-- **Theme** — solid navy brand (`#1e3a8a` / dark `#0f172a`), light slate
-  background, rounded cards, soft shadows. Professional fintech look.
-- **Login** — full-screen, chromeless page (`EmptyLayout`) with a centered card,
-  brand mark, the dev credentials, and an `+ MFA (TOTP)` hint.
-- **Shell** — sticky white top bar with the app title and a **user chip**
-  (initials avatar + name + role) and Logout; a dark navy **sidebar** with
-  grouped sections (Report, Master Data) and an active-item accent bar.
-- **Dashboard** — a solid navy welcome hero (name + role pill), three **stat cards**
-  with colored icon badges, and a dark `/api/me` verification panel.
-- **Placeholders / Access denied** — shared `.empty-state` and `.page-head`
-  styles for a consistent "coming soon" / message look.
-
-Icons come from **Bootstrap Icons** (CDN); the grid/utilities from **Bootstrap**.
-
-## Screenshots
-
-> Drop your captured images into a `docs/` folder and they will render here.
-
-| Screen | Preview |
-| ------ | ------- |
-| Login page (SSO button) | `docs/01-login.png` |
-| Dev IdP sign-in | `docs/02-idp-login.png` |
-| Dashboard (welcome + widgets + `/api/me`) | `docs/03-dashboard.png` |
-| Network tab — only a cookie, no token | `docs/04-network-no-token.png` |
-
----
-
-## Switching to a production Identity Provider (Azure AD / Keycloak)
-
-Swapping providers requires **configuration changes only** — no application code:
-
-1. In `Server/appsettings.json`, update the `Oidc` section (`Authority`, `ClientId`,
-   `ClientSecret`, scopes).
-2. In `Server/Program.cs`, delete the `AddIdentityServer(...)` block and the
-   `app.UseIdentityServer()` call, and remove the `Server/Pages/Account/*` pages
-   (those exist only for the in-memory dev IdP).
-3. Register these redirect URIs in your real provider:
-   `https://localhost:5001/signin-oidc` and `https://localhost:5001/signout-callback-oidc`.
-
-Search for the `TODO:` comments in `Server/Program.cs` and `Server/Config.cs`.
+In **Development** IdentityServer uses a **developer signing credential** (`tempkey.jwk`,
+git-ignored) instead of automatic key management — avoids "key not found in key ring" after
+key/Data-Protection resets. Production should use managed/HSM-backed keys (see `docs/`).
 
 ---
 
 ## Troubleshooting
 
-**"A project with an Output Type of Class Library cannot be started directly."**
-You are trying to run `Client` or `Shared`. Only **`Server`** is executable — set it
-as the startup project, or run `dotnet run --project Server`.
+**The database looks like it wasn't created.** It almost certainly was — on a *different*
+SQL instance. Ensure `ConnectionStrings:Sso` and the instance open in SSMS are the **same**
+server.
 
-**Login keeps returning to the sign-in page ("User is not authenticated" loop).**
-IdentityServer must read its session from its own `idsrv` scheme, not the BFF
-default `cookie` scheme. This is pinned in `Server/Program.cs` with
-`options.Authentication.CookieAuthenticationScheme = IdentityServerConstants.DefaultCookieAuthenticationScheme;`.
+**Login stays on the sign-in page.** Server-side login is fine if the credentials are
+current. Common causes: (a) the password was already changed away from the seed value
+(check the small red error "Invalid username or password"); (b) stale browser cookies — use
+a fresh InPrivate window. The Login → MFA handoff uses a **signed, time-limited token** (not
+a TempData cookie), so it survives redirects.
 
-**Login succeeds but the dashboard never appears (stays anonymous).**
-The client reads `/bff/user`, whose claim values are **not all strings**
-(`bff:session_expires_in` is a number). The auth-state provider deserializes each
-value as a `JsonElement` and stringifies it — deserializing straight into `string`
-throws and silently logs the user out.
+**`error: Conflicting assets ... appsettings#[.{fingerprint}]`.** A stale static-web-assets
+cache from the .NET 10 SDK. Delete `bin`/`obj` and rebuild.
 
-**Browser shows a certificate warning on `https://localhost:5001`.**
-Trust the local dev cert once: `dotnet dev-certs https --trust` (then restart the browser).
+**Browser cert warning on `https://localhost:5001`.** `dotnet dev-certs https --trust`,
+then restart the browser.
 
-**`ERR_CONNECTION_REFUSED` / `browserLinkSignalR` noise in the console.**
-Harmless — that is Visual Studio's Browser Link feature, not the application.
+**`browserLinkSignalR` / `aspnetcore-browser-refresh` CSP noise in the console.** Harmless
+dev tooling; the CSP is widened for these in Development only.
 
-**A Duende license warning appears on startup.**
-Expected and **allowed for development/testing**. Both `Duende.IdentityServer` and
-`Duende.BFF` require a license only for production use.
+**A Duende license warning on startup.** Expected and allowed for development/testing.
 
 ---
 
-## Notes
+## Documentation
 
-- Roles used by the system: `InvestmentManager`, `FundAdministrator`,
-  `RiskManager`, `ComplianceOfficer`.
-- The UI text is in Indonesian; only the OIDC/business identifiers are in English.
-- The business modules (Stock Position, Shares, Chart of Account) are navigation
-  **placeholders** at this stage — no business logic yet.
-```
+- `docs/ARCHITECTURE-SSO-Master-v1.md` — target architecture, RBAC & audit design, security
+  hardening checklist, phased roadmap (mapped to OJK / UU PDP).
+- `docs/RUN.md` — detailed run & first-login guide.
+- `docs/P0-foundation-and-next-steps.md` — data layer foundation & migration notes.
+
+> Most UI text is in Indonesian; identifiers and code are in English. Business modules
+> (Stock Position, Shares, Chart of Account) are navigation placeholders pending domain logic.
