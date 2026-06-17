@@ -12,6 +12,14 @@ obj/
 ## Duende IdentityServer auto-generated dev signing keys
 Server/keys/
 
+## ASP.NET Core Data Protection keys (protect per-user MFA secrets at rest)
+dp-keys/
+Server/dp-keys/
+
+## IdentityServer developer signing key (dev only)
+tempkey.jwk
+Server/tempkey.jwk
+
 ## Local run logs / scratch
 _run.log
 _run.err

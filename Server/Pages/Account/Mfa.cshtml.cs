@@ -1,79 +1,93 @@
-using System.Security.Claims;
 using Duende.IdentityServer;
-using Duende.IdentityServer.Test;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using SSO.Application.Abstractions;
+using SSO.Domain.Auditing;
+using SSO.Domain.Enums;
+using SSO.Domain.Identity;
 using Server.Services;
 
 namespace Server.Pages.Account;
 
 /// <summary>
-/// Second factor (TOTP) for the dev IdP. Reached only after the password step
-/// succeeds (the pending subject id is carried in TempData). On a valid code the
-/// idsrv session is finally established with amr = [pwd, mfa].
+/// Second factor (TOTP). Reached only after the password step, identified by the
+/// signed, time-limited token in the query string (carried into the form). On a
+/// valid code the IdentityServer session is established with amr = [pwd, mfa]
+/// (unless a password change is mandated first).
 /// </summary>
 public class MfaModel : PageModel
 {
-    private readonly TestUserStore _users;
+    private readonly UserManager<ApplicationUser> _users;
     private readonly TotpService _totp;
+    private readonly IMfaSecretProtector _protector;
+    private readonly IAuditService _audit;
+    private readonly LoginStateProtector _loginState;
 
-    public MfaModel(TestUserStore users, TotpService totp)
+    public MfaModel(
+        UserManager<ApplicationUser> users,
+        TotpService totp,
+        IMfaSecretProtector protector,
+        IAuditService audit,
+        LoginStateProtector loginState)
     {
         _users = users;
         _totp = totp;
+        _protector = protector;
+        _audit = audit;
+        _loginState = loginState;
     }
 
-    // Cookie that remembers this browser has already added the account to its
-    // authenticator app, so we don't push the enrollment QR on every login
-    // (which makes Microsoft Authenticator complain the account already exists).
     private const string EnrolledCookie = "fa_enrolled";
 
+    // The pending-login token (query string on GET, hidden field on POST).
+    [BindProperty(SupportsGet = true)] public string? T { get; set; }
     [BindProperty] public string? Code { get; set; }
 
     public string? Error { get; set; }
     public string Account { get; set; } = "";
     public string QrDataUri { get; set; } = "";
     public string ManualKey { get; set; } = "";
-
-    // When true the QR + manual key are collapsed (returning user just types a code).
     public bool AlreadyEnrolled { get; set; }
 
-    public IActionResult OnGet()
+    public async Task<IActionResult> OnGetAsync()
     {
-        var sub = TempData.Peek("mfa:sub") as string;
-        if (string.IsNullOrEmpty(sub))
-        {
-            // No pending password step -> start over.
-            return RedirectToPage("Login");
-        }
+        if (!_loginState.TryUnprotect(T, out var sub, out _))
+            return RedirectToPage("Login", new { expired = true });
 
-        Prepare(sub);
+        await PrepareAsync(sub);
         return Page();
     }
 
     public async Task<IActionResult> OnPostAsync()
     {
-        var sub = TempData.Peek("mfa:sub") as string;
-        if (string.IsNullOrEmpty(sub))
-        {
+        if (!_loginState.TryUnprotect(T, out var sub, out var returnUrl))
+            return RedirectToPage("Login", new { expired = true });
+
+        var user = await _users.FindByIdAsync(sub);
+        if (user is null)
             return RedirectToPage("Login");
-        }
 
-        var user = _users.FindBySubjectId(sub);
-        var secret = Config.GetMfaSecret(sub);
+        var secret = await EnsureSecretAsync(user);
 
-        if (user is null || !_totp.VerifyCode(secret, Code))
+        if (!_totp.VerifyCode(secret, Code))
         {
+            await _audit.RecordAsync(new AuditEvent
+            {
+                Category = AuditCategory.Authentication,
+                Action = "Login.Mfa.Failed",
+                Outcome = AuditOutcome.Failure,
+                Severity = AuditSeverity.Warning,
+                ActorUserId = user.Id,
+                ActorUserName = user.UserName
+            });
+
             Error = "Kode autentikator tidak valid. Coba lagi.";
-            Prepare(sub);
+            await PrepareAsync(sub);
             return Page();
         }
 
-        var returnUrl = TempData.Peek("mfa:returnUrl") as string ?? "~/";
-
-        // Remember (on this browser) that the authenticator is set up, so future
-        // logins skip the enrollment QR and only ask for the 6-digit code.
         Response.Cookies.Append(EnrolledCookie, "1", new CookieOptions
         {
             Expires = DateTimeOffset.UtcNow.AddYears(1),
@@ -82,40 +96,80 @@ public class MfaModel : PageModel
             IsEssential = true
         });
 
-        // Both factors satisfied -> establish the idsrv session now.
-        var identityServerUser = new IdentityServerUser(user.SubjectId)
+        // Password + TOTP satisfied. If a password change is mandated, divert there
+        // (carry the same token); the change-password page completes sign-in.
+        if (user.MustChangePassword)
         {
-            DisplayName = user.Username,
-            AuthenticationMethods = new[] { "pwd", "mfa" }, // amr claims
-            AdditionalClaims = user.Claims.ToArray()
+            await _audit.RecordAsync(new AuditEvent
+            {
+                Category = AuditCategory.Authentication,
+                Action = "Login.Mfa.Success",
+                Outcome = AuditOutcome.Success,
+                Severity = AuditSeverity.Info,
+                ActorUserId = user.Id,
+                ActorUserName = user.UserName
+            });
+
+            return RedirectToPage("ChangePassword", new { t = T });
+        }
+
+        await SignInAndAuditAsync(user);
+
+        return Url.IsLocalUrl(returnUrl) ? Redirect(returnUrl) : Redirect("~/");
+    }
+
+    private async Task SignInAndAuditAsync(ApplicationUser user)
+    {
+        var identityServerUser = new IdentityServerUser(user.Id.ToString())
+        {
+            DisplayName = user.UserName,
+            AuthenticationMethods = new[] { "pwd", "mfa" } // amr claims
         };
         await HttpContext.SignInAsync(
             IdentityServerConstants.DefaultCookieAuthenticationScheme,
             identityServerUser.CreatePrincipal());
 
-        // Pending state consumed; clear it.
-        TempData.Remove("mfa:sub");
-        TempData.Remove("mfa:returnUrl");
+        user.LastLoginAtUtc = DateTimeOffset.UtcNow;
+        await _users.UpdateAsync(user);
 
-        return Url.IsLocalUrl(returnUrl) ? Redirect(returnUrl) : Redirect("~/");
+        await _audit.RecordAsync(new AuditEvent
+        {
+            Category = AuditCategory.Authentication,
+            Action = "Login.Success",
+            Outcome = AuditOutcome.Success,
+            Severity = AuditSeverity.Info,
+            ActorUserId = user.Id,
+            ActorUserName = user.UserName
+        });
     }
 
-    // Builds the enrollment data (QR + manual key) shown on the page.
-    private void Prepare(string sub)
+    /// <summary>Returns the user's plaintext TOTP secret, creating+storing one on first use.</summary>
+    private async Task<string> EnsureSecretAsync(ApplicationUser user)
     {
-        var user = _users.FindBySubjectId(sub);
-        Account = user?.Username ?? "user";
+        if (!string.IsNullOrEmpty(user.MfaSecretEncrypted))
+        {
+            try { return _protector.Unprotect(user.MfaSecretEncrypted); }
+            catch { /* unreadable (key rotation/corruption) -> re-enroll below */ }
+        }
 
+        var secret = TotpService.GenerateSecret();
+        user.MfaSecretEncrypted = _protector.Protect(secret);
+        user.MfaType = MfaType.Totp;
+        await _users.UpdateAsync(user);
+        return secret;
+    }
+
+    private async Task PrepareAsync(string sub)
+    {
+        var user = await _users.FindByIdAsync(sub);
+        Account = user?.UserName ?? "user";
         AlreadyEnrolled = Request.Cookies[EnrolledCookie] == "1";
 
-        var secret = Config.GetMfaSecret(sub);
-        ManualKey = TotpService.FormatManualKey(secret);
-
-        var uri = _totp.BuildOtpAuthUri(secret, Account);
-        QrDataUri = _totp.GenerateQrPngDataUri(uri);
-
-        // Keep the pending state alive for the next request (GET render -> POST).
-        TempData.Keep("mfa:sub");
-        TempData.Keep("mfa:returnUrl");
+        if (user is not null)
+        {
+            var secret = await EnsureSecretAsync(user);
+            ManualKey = TotpService.FormatManualKey(secret);
+            QrDataUri = _totp.GenerateQrPngDataUri(_totp.BuildOtpAuthUri(secret, Account));
+        }
     }
 }

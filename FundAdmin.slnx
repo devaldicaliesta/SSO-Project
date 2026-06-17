@@ -2,4 +2,7 @@
   <Project Path="Client/Client.csproj" />
   <Project Path="Server/Server.csproj" />
   <Project Path="Shared/Shared.csproj" />
+  <Project Path="SSO.Domain/SSO.Domain.csproj" />
+  <Project Path="SSO.Application/SSO.Application.csproj" />
+  <Project Path="SSO.Infrastructure/SSO.Infrastructure.csproj" />
 </Solution>

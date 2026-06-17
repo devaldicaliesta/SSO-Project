@@ -4,6 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Enables `dotnet user-secrets` for the BFF client secret / connection string in dev. -->
+    <UserSecretsId>sso-project-bff</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +22,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Client\Client.csproj" />
     <ProjectReference Include="..\Shared\Shared.csproj" />
+    <ProjectReference Include="..\SSO.Application\SSO.Application.csproj" />
+    <ProjectReference Include="..\SSO.Infrastructure\SSO.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

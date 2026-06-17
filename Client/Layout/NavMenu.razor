@@ -1,3 +1,6 @@
+@using Shared
+@inject HttpClient Http
+
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="">
@@ -10,42 +13,60 @@
     </div>
 </div>
 
+@* The menu is resolved server-side against the user's permissions (GET /api/menu).
+   The client renders exactly what it is allowed to see - no hardcoded links. *@
 <div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
     <nav class="flex-column">
-        <div class="nav-item">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-speedometer2"></span> Dashboard
-            </NavLink>
-        </div>
-
-        <div class="nav-section">Report</div>
-        <div class="nav-item">
-            <NavLink class="nav-link" href="report/stock-position">
-                <span class="bi bi-file-earmark-bar-graph"></span> Stock Position
-            </NavLink>
-        </div>
-
-        <div class="nav-section">Master Data</div>
-        <div class="nav-item">
-            <NavLink class="nav-link" href="master-data/shares">
-                <span class="bi bi-building"></span> Shares
-            </NavLink>
-        </div>
-        <div class="nav-item">
-            <NavLink class="nav-link" href="master-data/chart-of-account">
-                <span class="bi bi-journal-text"></span> Chart of Account
-            </NavLink>
-        </div>
+        @if (_menu is not null)
+        {
+            @foreach (var item in _menu)
+            {
+                @if (item.Children.Count == 0 && item.Route is not null)
+                {
+                    <div class="nav-item">
+                        <NavLink class="nav-link" href="@item.Route" Match="@MatchFor(item.Route)">
+                            <span class="bi @item.Icon"></span> @item.Label
+                        </NavLink>
+                    </div>
+                }
+                else if (item.Children.Count > 0)
+                {
+                    <div class="nav-section">@item.Label</div>
+                    @foreach (var child in item.Children)
+                    {
+                        <div class="nav-item">
+                            <NavLink class="nav-link" href="@(child.Route ?? string.Empty)">
+                                <span class="bi @child.Icon"></span> @child.Label
+                            </NavLink>
+                        </div>
+                    }
+                }
+            }
+        }
     </nav>
 </div>
 
 @code {
+    private List<MenuItemDto>? _menu;
     private bool collapseNavMenu = true;
 
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
 
-    private void ToggleNavMenu()
+    private void ToggleNavMenu() => collapseNavMenu = !collapseNavMenu;
+
+    protected override async Task OnInitializedAsync()
     {
-        collapseNavMenu = !collapseNavMenu;
+        try
+        {
+            _menu = await Http.GetFromJsonAsync<List<MenuItemDto>>("api/menu");
+        }
+        catch
+        {
+            // Not signed in / network error -> render nothing.
+            _menu = new List<MenuItemDto>();
+        }
     }
+
+    private static NavLinkMatch MatchFor(string route) =>
+        string.IsNullOrEmpty(route) ? NavLinkMatch.All : NavLinkMatch.Prefix;
 }

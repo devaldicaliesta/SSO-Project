@@ -1,0 +1,158 @@
+@page "/admin/roles"
+@attribute [Authorize]
+@using Shared
+@inject HttpClient Http
+
+<PageTitle>Roles &amp; Permissions - FundAdmin Asset Management</PageTitle>
+
+<div class="page-head">
+    <div class="crumb">Administration</div>
+    <h1>Roles &amp; Permissions</h1>
+</div>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger d-flex justify-content-between align-items-center">
+        <div>@_error</div>
+        <button class="btn-close" @onclick="() => _error = null"></button>
+    </div>
+}
+
+<div class="card mb-4">
+    <div class="card-header"><span class="bi bi-plus-circle me-2"></span>Tambah Peran</div>
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-4"><input class="form-control" placeholder="Nama peran" @bind="_newRole.Name" /></div>
+            <div class="col-md-5"><input class="form-control" placeholder="Deskripsi" @bind="_newRole.Description" /></div>
+            <div class="col-md-3"><button class="btn btn-primary w-100" @onclick="CreateRoleAsync" disabled="@_busy">Buat Peran</button></div>
+        </div>
+    </div>
+</div>
+
+@if (_roles is null)
+{
+    <div class="text-center mt-4"><div class="spinner-border text-primary"></div></div>
+}
+else
+{
+    @foreach (var role in _roles)
+    {
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>@role.Name</strong>
+                    @if (role.IsSystemRole) { <span class="badge bg-info text-dark ms-2">system</span> }
+                    <div><small class="text-muted">@role.Description</small></div>
+                </div>
+                <div>
+                    @if (_editingRoleId == role.Id)
+                    {
+                        <button class="btn btn-sm btn-primary" @onclick="() => SavePermissionsAsync(role)">Simpan</button>
+                        <button class="btn btn-sm btn-link" @onclick="() => _editingRoleId = null">Batal</button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-sm btn-outline-dark" @onclick="() => EditPermissions(role)">Edit permission</button>
+                    }
+                </div>
+            </div>
+            <div class="card-body">
+                @if (_editingRoleId == role.Id)
+                {
+                    @foreach (var group in _permissions.GroupBy(p => p.Category))
+                    {
+                        <div class="mb-2">
+                            <div class="fw-semibold small text-uppercase text-muted">@group.Key</div>
+                            @foreach (var p in group)
+                            {
+                                var pid = $"perm_{role.Id}_{p.Code}";
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="@pid"
+                                           checked="@_editPerms.Contains(p.Code)"
+                                           @onchange="e => TogglePerm(p.Code, e.Value is true)" />
+                                    <label class="form-check-label" for="@pid">
+                                        @p.Name <code class="text-muted">@p.Code</code>
+                                    </label>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    @if (role.Permissions.Count == 0)
+                    {
+                        <span class="text-muted">Tidak ada permission.</span>
+                    }
+                    else
+                    {
+                        @foreach (var permCode in role.Permissions)
+                        {
+                            <span class="badge bg-light text-dark border me-1 mb-1">@permCode</span>
+                        }
+                    }
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<RoleDto>? _roles;
+    private List<PermissionDto> _permissions = new();
+    private CreateRoleRequest _newRole = new();
+    private Guid? _editingRoleId;
+    private HashSet<string> _editPerms = new();
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        try { _permissions = await Http.GetFromJsonAsync<List<PermissionDto>>("api/permissions") ?? new(); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task LoadAsync()
+    {
+        try { _roles = await Http.GetFromJsonAsync<List<RoleDto>>("api/roles"); }
+        catch (Exception ex) { _error = ex.Message; _roles = new(); }
+    }
+
+    private void EditPermissions(RoleDto role)
+    {
+        _editingRoleId = role.Id;
+        _editPerms = new HashSet<string>(role.Permissions);
+    }
+
+    private void TogglePerm(string code, bool on)
+    {
+        if (on) _editPerms.Add(code);
+        else _editPerms.Remove(code);
+    }
+
+    private async Task SavePermissionsAsync(RoleDto role)
+    {
+        try
+        {
+            await Http.PutAsJsonAsync($"api/roles/{role.Id}/permissions",
+                new SetRolePermissionsRequest { Permissions = _editPerms.ToList() });
+            _editingRoleId = null;
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task CreateRoleAsync()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/roles", _newRole);
+            if (resp.IsSuccessStatusCode) { _newRole = new(); await LoadAsync(); }
+            else { _error = await resp.Content.ReadAsStringAsync(); }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

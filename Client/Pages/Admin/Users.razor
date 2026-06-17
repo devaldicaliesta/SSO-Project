@@ -1,0 +1,228 @@
+@page "/admin/users"
+@attribute [Authorize]
+@using Shared
+@inject HttpClient Http
+
+<PageTitle>Users - FundAdmin Asset Management</PageTitle>
+
+<div class="page-head">
+    <div class="crumb">Administration</div>
+    <h1>Users</h1>
+</div>
+
+@if (_tempPassword is not null)
+{
+    <div class="alert alert-success d-flex justify-content-between align-items-center">
+        <div>
+            Password sementara untuk <strong>@_tempPasswordFor</strong>:
+            <code>@_tempPassword</code> &mdash; sampaikan ke pengguna; wajib diganti saat login pertama.
+        </div>
+        <button class="btn-close" @onclick="() => _tempPassword = null"></button>
+    </div>
+}
+@if (_error is not null)
+{
+    <div class="alert alert-danger d-flex justify-content-between align-items-center">
+        <div>@_error</div>
+        <button class="btn-close" @onclick="() => _error = null"></button>
+    </div>
+}
+
+<div class="card mb-4">
+    <div class="card-header"><span class="bi bi-person-plus me-2"></span>Tambah Pengguna</div>
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-4"><input class="form-control" placeholder="Email" @bind="_new.Email" /></div>
+            <div class="col-md-4"><input class="form-control" placeholder="Nama lengkap" @bind="_new.FullName" /></div>
+            <div class="col-md-4"><button class="btn btn-primary w-100" @onclick="CreateAsync" disabled="@_busy">Buat Pengguna</button></div>
+        </div>
+        <div class="mt-2">
+            <small class="text-muted me-2">Peran:</small>
+            @foreach (var r in _roles)
+            {
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="newrole_@r.Name"
+                           checked="@_new.Roles.Contains(r.Name)"
+                           @onchange="e => ToggleNewRole(r.Name, e.Value is true)" />
+                    <label class="form-check-label" for="newrole_@r.Name">@r.Name</label>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (_users is null)
+{
+    <div class="text-center mt-4"><div class="spinner-border text-primary"></div></div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead>
+                    <tr><th>User</th><th>Status</th><th>MFA</th><th>Peran</th><th>Login terakhir</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var u in _users)
+                    {
+                        <tr>
+                            <td><strong>@u.UserName</strong><br /><small class="text-muted">@u.FullName</small></td>
+                            <td>
+                                <span class="badge @(u.Status == "Active" ? "bg-success" : "bg-secondary")">@u.Status</span>
+                                @if (u.LockedOut) { <span class="badge bg-danger ms-1">Locked</span> }
+                                @if (u.MustChangePassword) { <span class="badge bg-warning text-dark ms-1">Ganti PW</span> }
+                            </td>
+                            <td>@(u.MfaEnrolled ? "TOTP" : "-")</td>
+                            <td>@string.Join(", ", u.Roles)</td>
+                            <td>@(u.LastLoginAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                            <td class="text-end text-nowrap">
+                                @if (u.Status == "Active")
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => DisableAsync(u)">Disable</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-success" @onclick="() => EnableAsync(u)">Enable</button>
+                                }
+                                @if (u.LockedOut)
+                                {
+                                    <button class="btn btn-sm btn-outline-warning ms-1" @onclick="() => UnlockAsync(u)">Unlock</button>
+                                }
+                                <button class="btn btn-sm btn-outline-primary ms-1" @onclick="() => ResetAsync(u)">Reset PW</button>
+                                <button class="btn btn-sm btn-outline-dark ms-1" @onclick="() => EditRoles(u)">Roles</button>
+                            </td>
+                        </tr>
+                        @if (_editing?.Id == u.Id)
+                        {
+                            <tr>
+                                <td colspan="6" class="bg-light">
+                                    <div class="p-2">
+                                        <strong class="me-2">Peran untuk @u.UserName:</strong>
+                                        @foreach (var r in _roles)
+                                        {
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="checkbox" id="er_@r.Name"
+                                                       checked="@_editRoles.Contains(r.Name)"
+                                                       @onchange="e => ToggleEditRole(r.Name, e.Value is true)" />
+                                                <label class="form-check-label" for="er_@r.Name">@r.Name</label>
+                                            </div>
+                                        }
+                                        <button class="btn btn-sm btn-primary ms-2" @onclick="() => SaveRolesAsync(u)">Simpan</button>
+                                        <button class="btn btn-sm btn-link" @onclick="() => _editing = null">Batal</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private List<UserListItemDto>? _users;
+    private List<RoleDto> _roles = new();
+    private CreateUserRequest _new = new();
+    private string? _tempPassword;
+    private string? _tempPasswordFor;
+    private string? _error;
+    private bool _busy;
+    private UserListItemDto? _editing;
+    private List<string> _editRoles = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRolesAsync();
+        await LoadUsersAsync();
+    }
+
+    private async Task LoadRolesAsync()
+    {
+        try { _roles = await Http.GetFromJsonAsync<List<RoleDto>>("api/roles") ?? new(); }
+        catch { /* user may lack roles.manage; create-with-roles simply unavailable */ }
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        try { _users = await Http.GetFromJsonAsync<List<UserListItemDto>>("api/users"); }
+        catch (Exception ex) { _error = ex.Message; _users = new(); }
+    }
+
+    private void ToggleNewRole(string role, bool on)
+    {
+        if (on) { if (!_new.Roles.Contains(role)) _new.Roles.Add(role); }
+        else _new.Roles.Remove(role);
+    }
+
+    private void ToggleEditRole(string role, bool on)
+    {
+        if (on) { if (!_editRoles.Contains(role)) _editRoles.Add(role); }
+        else _editRoles.Remove(role);
+    }
+
+    private async Task CreateAsync()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/users", _new);
+            if (resp.IsSuccessStatusCode)
+            {
+                var dto = await resp.Content.ReadFromJsonAsync<TemporaryPasswordDto>();
+                _tempPassword = dto?.TemporaryPassword;
+                _tempPasswordFor = _new.Email;
+                _new = new();
+                await LoadUsersAsync();
+            }
+            else { _error = await resp.Content.ReadAsStringAsync(); }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task DisableAsync(UserListItemDto u) { await PostAsync($"api/users/{u.Id}/disable"); await LoadUsersAsync(); }
+    private async Task EnableAsync(UserListItemDto u) { await PostAsync($"api/users/{u.Id}/enable"); await LoadUsersAsync(); }
+    private async Task UnlockAsync(UserListItemDto u) { await PostAsync($"api/users/{u.Id}/unlock"); await LoadUsersAsync(); }
+
+    private async Task ResetAsync(UserListItemDto u)
+    {
+        try
+        {
+            var resp = await Http.PostAsync($"api/users/{u.Id}/reset-password", null);
+            if (resp.IsSuccessStatusCode)
+            {
+                var dto = await resp.Content.ReadFromJsonAsync<TemporaryPasswordDto>();
+                _tempPassword = dto?.TemporaryPassword;
+                _tempPasswordFor = u.UserName;
+                await LoadUsersAsync();
+            }
+            else { _error = await resp.Content.ReadAsStringAsync(); }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void EditRoles(UserListItemDto u)
+    {
+        _editing = u;
+        _editRoles = new List<string>(u.Roles);
+    }
+
+    private async Task SaveRolesAsync(UserListItemDto u)
+    {
+        try
+        {
+            await Http.PutAsJsonAsync($"api/users/{u.Id}/roles", new SetUserRolesRequest { Roles = _editRoles });
+            _editing = null;
+            await LoadUsersAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task PostAsync(string url)
+    {
+        try { await Http.PostAsync(url, null); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+}

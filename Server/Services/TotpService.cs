@@ -12,6 +12,13 @@ public class TotpService
 {
     public const string Issuer = "FundAdmin Dev SSO";
 
+    /// <summary>
+    /// Generates a fresh, cryptographically-random Base32 TOTP secret for a new
+    /// enrollment (160-bit, the RFC 6238 / authenticator-app standard length).
+    /// </summary>
+    public static string GenerateSecret() =>
+        Base32Encoding.ToString(KeyGeneration.GenerateRandomKey(20));
+
     /// <summary>otpauth:// URI understood by Microsoft Authenticator.</summary>
     public string BuildOtpAuthUri(string secretBase32, string account)
     {

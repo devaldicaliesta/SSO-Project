@@ -104,6 +104,7 @@
         </details>
 
         <form method="post">
+            <input type="hidden" asp-for="T" />
             <label asp-for="Code">Kode 6 digit</label>
             <input asp-for="Code" type="text" inputmode="numeric" autocomplete="one-time-code"
                    maxlength="6" pattern="[0-9]*" placeholder="------" autofocus />

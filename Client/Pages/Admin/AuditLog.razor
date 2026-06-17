@@ -1,0 +1,108 @@
+@page "/admin/audit"
+@attribute [Authorize]
+@using Shared
+@inject HttpClient Http
+
+<PageTitle>Activity Log - FundAdmin Asset Management</PageTitle>
+
+<div class="page-head">
+    <div class="crumb">Administration</div>
+    <h1>Activity Log</h1>
+</div>
+
+@if (_data is null)
+{
+    <div class="text-center mt-5">
+        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Memuat...</span></div>
+        <p class="mt-2 text-muted">Memuat aktivitas...</p>
+    </div>
+}
+else if (_data.Items.Count == 0)
+{
+    <div class="empty-state">
+        <div class="icon"><span class="bi bi-clipboard-data"></span></div>
+        <h3>Belum ada aktivitas</h3>
+        <p class="mb-0">Aktivitas autentikasi dan perubahan data akan muncul di sini.</p>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Waktu (UTC)</th>
+                        <th>Kategori</th>
+                        <th>Aksi</th>
+                        <th>Hasil</th>
+                        <th>Aktor</th>
+                        <th>Target</th>
+                        <th>IP</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var e in _data.Items)
+                    {
+                        <tr>
+                            <td>@e.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td>@e.Category</td>
+                            <td><code>@e.Action</code></td>
+                            <td>
+                                <span class="badge @(e.Outcome == "Success" ? "bg-success" : "bg-danger")">@e.Outcome</span>
+                            </td>
+                            <td>@e.ActorUserName</td>
+                            <td>@(e.TargetType is null ? "" : $"{e.TargetType} {e.TargetId}")</td>
+                            <td>@e.IpAddress</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-3">
+        <small class="text-muted">Total @_data.Total &middot; Halaman @_data.Page</small>
+        <div>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="PrevAsync" disabled="@(_page <= 1)">
+                <span class="bi bi-chevron-left"></span> Sebelumnya
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="NextAsync" disabled="@(!HasNext)">
+                Berikutnya <span class="bi bi-chevron-right"></span>
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private PagedResult<AuditEventDto>? _data;
+    private int _page = 1;
+    private const int PageSize = 50;
+
+    private bool HasNext => _data is not null && _page * PageSize < _data.Total;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _data = await Http.GetFromJsonAsync<PagedResult<AuditEventDto>>(
+                $"api/audit?page={_page}&pageSize={PageSize}");
+        }
+        catch
+        {
+            _data = new PagedResult<AuditEventDto>();
+        }
+    }
+
+    private async Task PrevAsync()
+    {
+        if (_page > 1) { _page--; await LoadAsync(); }
+    }
+
+    private async Task NextAsync()
+    {
+        if (HasNext) { _page++; await LoadAsync(); }
+    }
+}
