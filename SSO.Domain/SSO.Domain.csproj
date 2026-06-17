@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
@@ -9,7 +9,7 @@
   <ItemGroup>
     <!-- Only dependency: the Identity base types (IdentityUser<T>, IdentityRole<T>).
          No EF Core, no ASP.NET hosting - the domain stays persistence-ignorant. -->
-    <PackageReference Include="Microsoft.Extensions.Identity.Stores" Version="8.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Identity.Stores" Version="10.0.9" />
   </ItemGroup>
 
 </Project>
